@@ -57,11 +57,11 @@ export function expand(alg) {
     if ("xyz".includes(base)) {
       map = rotate(map, base, amt);
     } else if (WIDE[base]) {
-      for (const [f, k] of WIDE[base]) moves.push({ face: map[f], amt: (((amt * k) % 4) + 4) % 4, tok: ti });
+      for (const [f, k] of WIDE[base]) moves.push({ face: map[f], amt: (((amt * k) % 4) + 4) % 4, tok: ti, grip: { ...map } });
       const [ax, k] = WIDE_ROT[base];
       map = rotate(map, ax, amt * k);
     } else {
-      moves.push({ face: map[base], amt, tok: ti });
+      moves.push({ face: map[base], amt, tok: ti, grip: { ...map } });
     }
   });
   return { tokens, moves };
@@ -117,4 +117,19 @@ export function heldNotation(m) {
   const f = SENSOR_TO_HELD[m.face];
   const a = ((m.amt % 4) + 4) % 4;
   return f + (a === 2 ? "2" : a === 3 ? "'" : "");
+}
+
+/** Grepet slik algoritmen starter: hvit ned, grønn foran. Nøkkel = flate i grepet, verdi = sensorflate. */
+export const START_GRIP = { ...START };
+
+/** Notasjon for et sensortrekk i et gitt grep (f.eks. fra gyroen). */
+export function gripNotation(m, grip) {
+  const f = Object.keys(grip).find((k) => grip[k] === m.face) || "?";
+  const a = ((m.amt % 4) + 4) % 4;
+  return f + (a === 2 ? "2" : a === 3 ? "'" : "");
+}
+
+/** Samme grep? (U og F avgjør hele orienteringen.) */
+export function sameGrip(a, b) {
+  return a && b && a.U === b.U && a.F === b.F;
 }

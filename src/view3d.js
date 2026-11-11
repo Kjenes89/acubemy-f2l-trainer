@@ -99,6 +99,20 @@ export class Cube3D {
     if (!this.anim && !this.queue.length && this.facelets) this.paint(this.facelets, dim);
   }
 
+  /** Grepet nå, lest fra gyroen: { U: sensorflate, F: …, R: … } for flatene som vender opp, mot deg, til høyre osv. */
+  grip() {
+    if (!this.gyro) return null;
+    const dirs = { U: [0, 1, 0], D: [0, -1, 0], F: [0, 0, 1], B: [0, 0, -1], R: [1, 0, 0], L: [-1, 0, 0] };
+    const g = {};
+    for (const [s, n] of Object.entries(NORMALS)) {
+      const v = new THREE.Vector3(...n).applyQuaternion(this.target);
+      let best = null, bd = -2;
+      for (const [w, d] of Object.entries(dirs)) { const dot = v.x * d[0] + v.y * d[1] + v.z * d[2]; if (dot > bd) { bd = dot; best = w; } }
+      g[best] = s;
+    }
+    return Object.keys(g).length === 6 ? g : null;
+  }
+
   setGyro(q) { this.gyro = new THREE.Quaternion(q.x, q.y, q.z, q.w); }
 
   startAnim(job) {

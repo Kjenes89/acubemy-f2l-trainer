@@ -29,6 +29,8 @@ aside { display: flex; flex-direction: column; gap: 12px; }
 .mv.now { background: var(--accent); color: #fff; }
 .mv.bad { background: var(--bad); color: #111; }
 .sep { color: var(--muted); font-size: 12px; align-self: center; margin-right: 8px; }
+.hint { font-size: 16px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; }
+.hint .mv { font: 22px ui-monospace, Consolas, monospace; }
 .fix { color: var(--bad); font-size: 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; }
 .cube svg { width: 220px; height: 235px; }
 #cube3d { width: 100%; max-width: 340px; aspect-ratio: 1; }

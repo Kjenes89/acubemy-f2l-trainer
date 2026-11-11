@@ -1,5 +1,5 @@
 import { SOLVED, OPPOSITE, turn, f2lSolved } from "./cube.js";
-import { expand, invert, simplify, canonical, heldNotation } from "./alg.js";
+import { expand, invert, simplify, canonical, heldNotation, gripNotation, sameGrip } from "./alg.js";
 import { CASES, CASE_BY_N, DEFAULT_SELECTION, LL_SCRAMBLERS } from "./cases.js";
 import { cubeSvg } from "./view.js";
 
@@ -105,6 +105,7 @@ function finishCase() {
   if (ok) { st.ok++; if (!res.guided) st.times.push(t); }
   S.last = res;
   S.repeat = ok ? null : cur.c.n;
+  if (S.mode === "guided") S.repeat = cur.c.n; // guidet: samme case til du går ut av guidet
   // Kort pause så siste trekk rekker å vises; trekk i pausen ignoreres.
   S.phase = "pause";
   render();
@@ -135,16 +136,32 @@ function chips(list, cls = "") {
   return list.map((t) => `<span class="mv ${cls}">${t}</span>`).join("");
 }
 
+// Notasjon slik du holder kuben nå (fra gyroen); uten gyro: slik algoritmen forutsetter.
+function liveGrip() { return view3d ? view3d.grip() : null; }
+function notate(m, fallbackGrip) {
+  const g = liveGrip();
+  return g ? gripNotation(m, g) : fallbackGrip ? gripNotation(m, fallbackGrip) : heldNotation(m);
+}
+
 function algHtml(cur, guided) {
-  const toks = cur.alg.tokens;
   if (!guided) return "";
   const it = cur.guide.items;
+  const head = it.find((m) => !m.corr);
+  let msg = "";
   if (cur.guide.correcting) {
     const fixes = [];
-    for (const m of it) { if (!m.corr) break; fixes.push(heldNotation(m)); }
-    return `<div class="fix">Annet trekk enn algoritmen – angre: ${chips(fixes, "bad")}</div>` + algLine(cur, it.find((m) => !m.corr));
+    for (const m of it) { if (!m.corr) break; fixes.push(notate(m, head && head.grip)); }
+    msg = `<div class="fix">Angre: ${chips(fixes, "bad")}</div>`;
+  } else if (head) {
+    const g = liveGrip();
+    const book = head.grip ? gripNotation(head, head.grip) : heldNotation(head);
+    if (g && head.grip && !sameGrip(g, head.grip)) {
+      msg = `<div class="hint">Kuben står ikke rotert som i algoritmen. Slik du holder den nå: <span class="mv now">${gripNotation(head, g)}</span></div>`;
+    } else {
+      msg = `<div class="hint">Neste: <span class="mv now">${book}</span></div>`;
+    }
   }
-  return algLine(cur, it[0]);
+  return msg + algLine(cur, head);
 }
 
 function algLine(cur, head) {
@@ -216,7 +233,12 @@ function renderPicker() {
 
 // ---------- oppkobling ----------
 function bind() {
-  document.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => { S.mode = b.dataset.mode; render(); }));
+  document.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => {
+    const was = S.mode;
+    S.mode = b.dataset.mode;
+    if (was === "guided" && S.mode === "drill") S.repeat = null; // tilbake til vanlig utvalg etter denne casen
+    render();
+  }));
   $("mixll").addEventListener("change", (e) => { S.mixLL = e.target.checked; });
   $("toggle-picker").addEventListener("click", () => { $("picker-wrap").hidden = !$("picker-wrap").hidden; renderPicker(); });
   $("picker").addEventListener("click", (e) => {
@@ -248,7 +270,18 @@ async function boot() {
       $("device").textContent = d.connected ? d.deviceName || "Kube tilkoblet" : "Ingen kube – koble til i acubemy";
       $("device").className = d.connected ? "ok" : "warn";
     });
-    acubemy.onGyro((q) => { if (view3d) view3d.setGyro(q); });
+    acubemy.onGyro((q) => {
+      if (!view3d) return;
+      view3d.setGyro(q);
+      // Guidet: oppdater hintet når du roterer kuben (uten å vente på et trekk).
+      if (S.mode === "guided" && S.phase === "case") {
+        requestAnimationFrame(() => {
+          const g = view3d.grip();
+          const k = g ? g.U + g.F : "";
+          if (k !== S.gripKey) { S.gripKey = k; render(); }
+        });
+      }
+    });
     acubemy.onMove(({ face, prime, timestamp }) => onMove(face, prime ? 3 : 1, timestamp));
   }
   if (!embedded) $("device").textContent = "Utenfor acubemy: tastene U R F D L B (Shift = mot klokka) simulerer kuben i kubens egen ramme";
