@@ -21,9 +21,14 @@ const colorMapFor = (k) => Object.fromEntries(RING.map((c, i) => [c, RING[(i + k
 
 const S = {
   facelets: SOLVED, // den VIRTUELLE kuben: casen lages her, og trekkene fra den fysiske kuben brukes på den
-  mode: "drill", // drill (tilfeldig) | rad (N riktige på rad per case) | guided
+  // drill (tilfeldig) | learn (én ny case om gangen) | recap (hver case N ganger) | weighted (svake oftere)
+  // | rad (N riktige på rad per case) | guided (algoritmen trekk for trekk)
+  mode: "drill",
   baseMode: "drill", // modusen du går tilbake til fra guidet
   rad: { n: 3, order: "weakest", queue: [], idx: 0, streak: 0 },
+  learn: { threshold: 4.0, meanOf: 3, newChance: 50, learned: new Set(), recent: {}, intro: new Set() },
+  recap: { repeat: 2, instant: false, order: "random", queue: [], idx: 0, times: {} },
+  weighted: { strength: 2 },
   hist: {}, // per case fra loggen (Worker /api/stats): medianTotal, attempts, ok
   mixLL: true,
   colorSwap: true,
@@ -88,8 +93,74 @@ function buildRadQueue() {
   S.rad.queue = cases; S.rad.idx = 0; S.rad.streak = 0;
 }
 
+// --- Learn (som solved): én ny case om gangen; lært når snittet av de siste N (gjenkjenning + utførelse) er under terskelen.
+const selected = () => CASES.map((c) => c.n).filter((n) => S.selection.has(n));
+function learnInit() {
+  const L = S.learn;
+  L.learned = new Set();
+  for (const n of selected()) {
+    const h = S.hist[n];
+    const last = h && h.lastTotals ? h.lastTotals.slice(-L.meanOf) : [];
+    if (last.length >= L.meanOf && last.reduce((a, b) => a + b, 0) / last.length <= L.threshold * 1000) L.learned.add(n);
+    L.recent[n] = last.slice();
+  }
+}
+function learnCurrent() { return selected().find((n) => !S.learn.learned.has(n)) ?? null; }
+function pickLearn() {
+  const cur = learnCurrent();
+  const known = selected().filter((n) => S.learn.learned.has(n));
+  if (cur == null) return CASE_BY_N[known[rnd(known.length)]] || null;
+  if (!known.length || Math.random() * 100 < S.learn.newChance) return CASE_BY_N[cur];
+  return CASE_BY_N[known[rnd(known.length)]];
+}
+function learnRecord(n, ok, total) {
+  const L = S.learn;
+  if (!ok) { L.recent[n] = []; return; } // en avvist løsning nullstiller
+  (L.recent[n] ||= []).push(total);
+  const last = L.recent[n].slice(-L.meanOf);
+  if (!L.learned.has(n) && last.length >= L.meanOf && last.reduce((a, b) => a + b, 0) / last.length <= L.threshold * 1000) {
+    L.learned.add(n);
+    flash(`Lært: F2L ${n}`);
+  }
+}
+
+// --- Recap (som solved): hver valgte case N ganger, etter hverandre eller i runder; sammendrag til slutt.
+function buildRecap() {
+  const R = S.recap, cases = selected();
+  if (R.order === "random") cases.sort(() => Math.random() - 0.5);
+  R.queue = R.instant ? cases.flatMap((n) => Array(R.repeat).fill(n)) : Array.from({ length: R.repeat }, () => cases).flat();
+  if (!R.instant && R.order === "random") { // stokk hver runde for seg, men unngå samme case to ganger på rad
+    R.queue = [];
+    for (let i = 0; i < R.repeat; i++) {
+      let round = cases.slice().sort(() => Math.random() - 0.5);
+      if (R.queue.length && round[0] === R.queue[R.queue.length - 1] && round.length > 1) round.push(round.shift());
+      R.queue.push(...round);
+    }
+  }
+  R.idx = 0; R.times = {};
+}
+
+// --- Weighted (som solved): sannsynlighet etter hvor svak casen er.
+function pickWeighted() {
+  const cases = selected();
+  if (!cases.length) return null;
+  const w = cases.map((n) => weakness(n));
+  const finite = w.filter(isFinite), max = finite.length ? Math.max(...finite) : 1;
+  const avoid = S.cur ? S.cur.c.n : null;
+  const weights = w.map((x, i) => (cases.length > 1 && cases[i] === avoid ? 0 : Math.pow((isFinite(x) ? x : max * 1.5) / max, S.weighted.strength)));
+  let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < cases.length; i++) { r -= weights[i]; if (r <= 0) return CASE_BY_N[cases[i]]; }
+  return CASE_BY_N[cases[cases.length - 1]];
+}
+
 function pickCase() {
   if (S.repeat && S.selection.has(S.repeat)) return CASE_BY_N[S.repeat];
+  if (S.mode === "learn") return pickLearn();
+  if (S.mode === "weighted") return pickWeighted();
+  if (S.mode === "recap") {
+    if (!S.recap.queue.length) buildRecap();
+    return S.recap.idx < S.recap.queue.length ? CASE_BY_N[S.recap.queue[S.recap.idx]] : null;
+  }
   if (S.mode === "rad") {
     if (!S.rad.queue.length || S.rad.queue.some((n) => !S.selection.has(n)) || S.rad.idx >= S.rad.queue.length) buildRadQueue();
     return CASE_BY_N[S.rad.queue[S.rad.idx]] || null;
@@ -117,7 +188,11 @@ function startCase(sameAgain = false) {
   hideOverlay();
   if (S.block && (performance.now() >= S.block.end || S.block.roundDone)) { endBlock(); return; }
   const c = sameAgain && S.cur ? S.cur.c : pickCase();
-  if (!c) { S.phase = "idle"; S.cur = null; render(); return; }
+  if (!c) {
+    S.phase = "idle"; S.cur = null; render();
+    if (S.mode === "recap" && S.recap.queue.length) recapSummary();
+    return;
+  }
   let cur;
   if (sameAgain && S.cur) {
     cur = { c: S.cur.c, alg: S.cur.alg, auf: S.cur.auf, startState: S.cur.startState, colorShift: S.cur.colorShift };
@@ -137,6 +212,7 @@ function startCase(sameAgain = false) {
     guide: new Tracker(items), hidden, aufAmt, executed: [], snaps: [], recent: [],
     t0: performance.now(), execStart: null, execIdx: 0,
   });
+  cur.intro = S.mode === "learn" && c.n === learnCurrent() && !S.learn.intro.has(c.n);
   S.cur = cur;
   S.phase = "case";
   if (view3d) { view3d.setColorShift(cur.colorShift || 0); view3d.set(S.facelets, dimNow()); }
@@ -155,7 +231,7 @@ function finishCase() {
   const rawQ = cur.executed.filter((m) => m.face !== "D").length;
   const fixed = ok && rawQ > quarters(cur.alg.moves);
   const execMoves = simplify(cur.executed.slice(cur.execIdx)).length;
-  const guided = S.mode === "guided";
+  const guided = S.mode === "guided" || cur.intro;
   const st = (S.stats[cur.c.n] ||= { reps: 0, ok: 0, exec: [], rec: [] });
   const prevMedian = median(st.exec);
   st.reps++;
@@ -168,18 +244,27 @@ function finishCase() {
     did: didInYourGrip(cur.executed),
   };
   log({
-    block: S.block ? S.block.id : null, trainer: "f2l", case: cur.c.n, slot: "FR", mode: S.mode,
+    block: S.block ? S.block.id : null, trainer: "f2l", case: cur.c.n, slot: "FR", mode: S.mode, intro: cur.intro || undefined,
     ok, fixed, rec: Math.round(rec), exec: Math.round(exec), tps: +S.last.tps.toFixed(2),
     did: S.last.did, alg: cur.c.alg, source: cur.c.source, auf: cur.aufAmt, colorShift: cur.colorShift || 0,
   });
   S.repeat = ok ? null : cur.c.n;
   if (guided) S.repeat = cur.c.n; // guidet: samme case til du går ut av guidet
+  if (S.mode === "learn") {
+    if (cur.intro) S.learn.intro.add(cur.c.n);
+    else learnRecord(cur.c.n, ok, rec + exec);
+  }
+  if (S.mode === "recap") {
+    if (ok) (S.recap.times[cur.c.n] ||= []).push(rec + exec);
+    S.recap.idx++; // også avvist teller som gjennomgått; casen gjentas uansett straks (repeat)
+    if (!ok) { S.recap.idx--; }
+  }
   if (S.mode === "rad") {
     if (ok) { S.rad.streak++; if (S.rad.streak >= S.rad.n) radAdvance("done"); }
     else S.rad.streak = 0;
     S.repeat = null; // køen styrer
   }
-  if (guided) {
+  if (S.mode === "guided") {
     // Mengdetrening: ingen resultatvindu, samme case igjen straks siste trekk er vist.
     flash(ok ? `${fmt(exec)} ✓` : "Annen løsning");
     S.phase = "pause";
@@ -193,12 +278,21 @@ function finishCase() {
   showOverlay();
 }
 
+function recapSummary() {
+  const rows = Object.entries(S.recap.times).map(([n, t]) => [+n, median(t)]).sort((a, b) => a[1] - b[1]);
+  const li = (r) => r.map(([n, m]) => `<li>F2L ${n}: ${fmt(m)}</li>`).join("");
+  $("phase").innerHTML = `<div class="big">Recap ferdig (${S.recap.queue.length} caser).</div>
+    <div class="recapsum"><div><b>Raskest</b><ul>${li(rows.slice(0, 3))}</ul></div>${rows.length > 3 ? `<div><b>Tregest</b><ul>${li(rows.slice(-Math.min(3, rows.length - 3)).reverse())}</ul></div>` : ""}</div>
+    <button id="recap-again">Ny recap</button>`;
+  $("recap-again").onclick = () => { buildRecap(); startCase(); };
+}
+
 // ---------- historikk fra loggen (for «svakeste først») ----------
 async function loadHist() {
   if (!LOG_URL) return;
   try {
     const r = await fetch(LOG_URL.replace(/\/api\/log$/, "/api/stats?days=14"));
-    if (r.ok) S.hist = (await r.json()).cases || {};
+    if (r.ok) { const j = await r.json(); S.hist = (j.trainers && j.trainers.f2l) || j.cases || {}; }
   } catch (e) { /* uten historikk brukes bare økta */ }
 }
 
@@ -301,7 +395,7 @@ function fourInRow(list, face, a, now) {
 function toggleGuided() {
   if (S.mode === "guided") {
     S.mode = S.baseMode; S.repeat = null;
-    flash(S.mode === "rad" ? "På rad" : "Drill");
+    flash({ rad: "På rad", learn: "Learn", recap: "Recap", weighted: "Weighted" }[S.mode] || "Drill");
     if (S.mode === "rad") {
       if (!S.rad.queue.length) buildRadQueue();
       const i = S.cur ? S.rad.queue.indexOf(S.cur.c.n) : -1; // fortsett i køen der casen du øvde på står
@@ -540,14 +634,23 @@ function sidebarResult() {
 }
 
 function statsHtml() {
-  const rows = CASES.filter((c) => S.stats[c.n]).map((c) => {
-    const s = S.stats[c.n];
-    const m = median(s.exec), mr = median(s.rec);
-    return `<tr><td>${c.n}</td><td>${c.bookNo}</td><td>${s.ok}/${s.reps}</td><td>${mr != null ? fmt(mr) : "–"}</td><td>${m != null ? fmt(m) : "–"}</td><td>${s.exec.length ? fmt(Math.min(...s.exec)) : "–"}</td></tr>`;
+  const rows = CASES.filter((c) => S.stats[c.n] || S.hist[c.n]).map((c) => {
+    const s = S.stats[c.n], h = S.hist[c.n] || {};
+    const sess = s && s.exec.length ? median(s.exec.map((e, i) => e + s.rec[i])) : null;
+    const f = (x) => (x != null ? fmt(x) : "–");
+    return `<tr><td>${c.n}</td><td>${f(h.medianRec)}</td><td>${f(h.medianExec)}</td><td>${f(h.medianTotal)}</td><td>${f(h.best)}</td><td>${h.attempts ? `${h.ok}/${h.attempts}` : "–"}</td><td>${f(sess)}</td></tr>`;
   }).join("");
-  if (!rows) return "";
-  return `<table><thead><tr><th>case</th><th>bok</th><th>valgt</th><th>gjenk.</th><th>utf.</th><th>beste</th></tr></thead><tbody>${rows}</tbody></table>
-  <p class="muted small">Median gjenkjenning og utførelse, bare drill med valgt løsning. Utførelse måles fra første trekk som ikke er U. Lagres ikke ennå (M2).</p>`;
+  if (!rows) return `<p class="muted small">Ingen data ennå.</p>`;
+  return `<table><thead><tr><th>case</th><th>gjenk.</th><th>utf.</th><th>sum</th><th>beste</th><th>godkj.</th><th>økta</th></tr></thead><tbody>${rows}</tbody></table>
+  <p class="muted small">Median fra loggen siste 14 dager (lastet da pluginen startet; guidet teller ikke). «Økta» = sum gjenkjenning + utførelse i denne økta.</p>`;
+}
+
+function learnProgress() {
+  const sel = selected(), done = sel.filter((n) => S.learn.learned.has(n)).length;
+  const cur = learnCurrent();
+  const r = cur != null ? (S.learn.recent[cur] || []).slice(-S.learn.meanOf) : [];
+  const avg = r.length ? fmt(r.reduce((a, b) => a + b, 0) / r.length) : "–";
+  return `<div class="radprog">Lært ${done} av ${sel.length}${cur != null ? ` · ny case: snitt av ${S.learn.meanOf} ${avg} / ${S.learn.threshold.toFixed(1)} s` : " · alle lært"}</div>`;
 }
 
 function render() {
@@ -561,7 +664,9 @@ function render() {
     main = `${view3d ? "" : `<div class="cube">${cubeSvg(S.facelets, { colorMap: colorMapFor(cur.colorShift || 0) })}</div>`}
       <div id="timer" class="timer">${timer}</div>
       ${S.mode === "rad" && S.rad.queue.length ? `<div class="radprog">Case ${Math.min(S.rad.idx + 1, S.rad.queue.length)} av ${S.rad.queue.length} · ${"●".repeat(S.rad.streak)}${"○".repeat(Math.max(0, S.rad.n - S.rad.streak))}</div>` : ""}
-      ${guided && S.phase === "case" ? algHtml(cur) : ""}`;
+      ${(guided || (cur.intro && S.mode === "learn")) && S.phase === "case" ? `${cur.intro ? `<div class="hint">Ny case – her er algoritmen</div>` : ""}${algHtml(cur)}` : ""}
+      ${S.mode === "learn" ? learnProgress() : ""}
+      ${S.mode === "recap" && S.recap.queue.length ? `<div class="radprog">${Math.min(S.recap.idx + 1, S.recap.queue.length)} av ${S.recap.queue.length}</div>` : ""}`;
   }
   $("phase").innerHTML = main;
   const rem = S.phase === "case" && cur ? rotateReminder(cur) : "";
@@ -574,8 +679,43 @@ function render() {
   $("stats").innerHTML = statsHtml();
   $("sel-count").textContent = `${S.selection.size} valgt`;
   document.querySelectorAll("[data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === S.mode));
-  $("rad-opts").hidden = !(S.mode === "rad" || (S.mode === "guided" && S.baseMode === "rad"));
+  const base = S.mode === "guided" ? S.baseMode : S.mode;
+  for (const m of ["rad", "learn", "recap", "weighted"]) $(`${m}-opts`).hidden = base !== m;
   $("rad-n").value = String(S.rad.n); $("rad-order").value = S.rad.order;
+}
+
+function renderAlgs() {
+  const f = (x) => (x != null ? fmt(x) : "–");
+  $("algs").innerHTML = CASES.map((c) => {
+    const h = S.hist[c.n] || {};
+    const st = simplify(invert(expand(c.alg).moves)).reduce((s, m) => turn(s, m.face, m.amt), SOLVED);
+    return `<button class="acard" data-alg="${c.n}">
+      <div class="acard-h"><b>F2L ${c.n}</b><span class="muted small">bok ${c.bookNo}</span></div>
+      <div class="acard-c">${cubeSvg(st)}</div>
+      <div class="acard-s"><span>Median ${f(h.medianTotal)}</span><span>Beste ${f(h.best)}</span><span>${h.attempts ? `${h.ok}/${h.attempts}` : "ingen data"}</span></div>
+    </button>`;
+  }).join("");
+}
+function showAlg(n) {
+  const c = CASE_BY_N[n], h = S.hist[n] || {};
+  const f = (x) => (x != null ? fmt(x) : "–");
+  $("algdetail").innerHTML = `<div class="ad-box">
+    <div class="ad-h"><b>F2L ${c.n}</b><span class="muted">bok ${c.bookNo}, s. ${c.bookPage} · ${c.source === "låst" ? "din låste løsning" : "bokas algoritme"}</span><button id="ad-close">Lukk</button></div>
+    <div class="ad-c">${cubeSvg(simplify(invert(expand(c.alg).moves)).reduce((s, m) => turn(s, m.face, m.amt), SOLVED))}</div>
+    <div class="ad-alg">${c.alg}</div>
+    ${c.source === "låst" ? `<div class="muted small">Boka: ${c.book}</div>` : ""}
+    ${c.alts.length ? `<div class="muted small">Godtas også: ${c.alts.join(" · ")}</div>` : ""}
+    <div class="ad-s">Gjenkjenning ${f(h.medianRec)} · utførelse ${f(h.medianExec)} · sum ${f(h.medianTotal)} · beste ${f(h.best)} · godkjent ${h.attempts ? `${h.ok}/${h.attempts}` : "–"}</div>
+    <div class="ad-b"><button id="ad-guided">Øv guidet</button></div>
+  </div>`;
+  $("algdetail").hidden = false;
+  $("ad-close").onclick = () => { $("algdetail").hidden = true; };
+  $("ad-guided").onclick = () => {
+    $("algdetail").hidden = true; $("algs-wrap").hidden = true;
+    S.selection.add(n); S.repeat = n;
+    if (S.mode !== "guided") { S.baseMode = S.mode; S.mode = "guided"; }
+    startCase();
+  };
 }
 
 function renderPicker() {
@@ -592,8 +732,20 @@ function bind() {
     if (m === "guided" || S.mode === "guided") { if (m !== "guided") S.baseMode = m; toggleGuided(); return; }
     S.mode = S.baseMode = m; S.repeat = null;
     if (m === "rad") buildRadQueue();
+    if (m === "learn") learnInit();
+    if (m === "recap") buildRecap();
     startCase();
   }));
+  const num = (id, fn) => $(id).addEventListener("change", (e) => { fn(e.target.type === "checkbox" ? e.target.checked : e.target.value); render(); });
+  num("learn-th", (v) => { S.learn.threshold = +v; learnInit(); });
+  num("learn-mean", (v) => { S.learn.meanOf = +v; learnInit(); });
+  num("learn-new", (v) => { S.learn.newChance = +v; });
+  num("recap-rep", (v) => { S.recap.repeat = +v; buildRecap(); startCase(); });
+  num("recap-inst", (v) => { S.recap.instant = v; buildRecap(); startCase(); });
+  num("recap-order", (v) => { S.recap.order = v; buildRecap(); startCase(); });
+  num("w-str", (v) => { S.weighted.strength = +v; });
+  $("toggle-algs").addEventListener("click", () => { $("algs-wrap").hidden = !$("algs-wrap").hidden; if (!$("algs-wrap").hidden) renderAlgs(); });
+  $("algs").addEventListener("click", (e) => { const b = e.target.closest("[data-alg]"); if (b) showAlg(+b.dataset.alg); });
   $("rad-n").addEventListener("change", (e) => { S.rad.n = +e.target.value; S.rad.streak = 0; render(); });
   $("rad-order").addEventListener("change", (e) => { S.rad.order = e.target.value; if (S.mode === "rad") { buildRadQueue(); startCase(); } });
   $("mixll").addEventListener("change", (e) => { S.mixLL = e.target.checked; });

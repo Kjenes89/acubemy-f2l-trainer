@@ -121,3 +121,23 @@ kbd { font: 12px ui-monospace, Consolas, monospace; color: var(--muted); }
 
 select { background: #1b2027; color: var(--text); border: 1px solid #333b45; border-radius: 6px; padding: 4px 6px; font: inherit; }
 .radprog { color: var(--muted); font-size: 15px; letter-spacing: .05em; }
+
+input[type=number] { background: #1b2027; color: var(--text); border: 1px solid #333b45; border-radius: 6px; padding: 4px 6px; font: inherit; }
+.seg { flex-wrap: wrap; }
+.recapsum { display: flex; gap: 32px; text-align: left; } .recapsum ul { margin: 4px 0; padding-left: 18px; }
+/* algoritmeoversikt */
+#algs-wrap { margin-bottom: 12px; }
+#algs { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+.acard { display: flex; flex-direction: column; gap: 4px; padding: 10px; text-align: center; }
+.acard-h { display: flex; justify-content: space-between; align-items: baseline; }
+.acard-c svg { width: 110px; height: 118px; }
+.acard-s { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); }
+#algdetail { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 20; padding: 16px; }
+#algdetail[hidden] { display: none; }
+.ad-box { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; max-width: 460px; width: 100%; display: flex; flex-direction: column; gap: 10px; align-items: center; text-align: center; }
+.ad-h { display: flex; gap: 10px; align-items: baseline; width: 100%; flex-wrap: wrap; } .ad-h b { font-size: 20px; } .ad-h button { margin-left: auto; }
+.ad-c svg { width: 170px; height: 182px; }
+.ad-alg { font: 600 24px ui-monospace, Consolas, monospace; }
+.ad-s { font-size: 14px; color: var(--muted); }
+
+[hidden] { display: none !important; }
