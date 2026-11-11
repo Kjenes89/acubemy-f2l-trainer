@@ -20,6 +20,7 @@
   <label class="chk"><input type="checkbox" id="short"> Kort oppsett</label>
   <button id="toggle-picker">Caser · <span id="sel-count"></span></button>
   <button id="calib" title="Hold hvit ned og grønn foran, og trykk">Kalibrer gyro</button>
+  <button id="sync" title="Hent kubetilstanden fra acubemy på nytt (hvis skjermen og kuben er ulike)">Synk med kuben</button>
   <button id="skip">Hopp over</button>
 </div>
 
@@ -43,7 +44,7 @@
   </aside>
 </main>
 
-<footer class="muted small">M1.1 · FR-spor · hold hvit ned og grønn foran · algoritmene vises som i boka, sammenligningen skjer uten rotasjoner</footer>
+<footer class="muted small"><span id="diag"></span><br>M1.2 · FR-spor · hold hvit ned og grønn foran · algoritmene vises som i boka, sammenligningen skjer uten rotasjoner</footer>
 
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }</script>
 <script src="https://cdn.jsdelivr.net/gh/acubemy/plugin-sdk@1/v1.js"></script>

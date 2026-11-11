@@ -134,7 +134,8 @@ export class Cube3D {
       if (t >= 1) { const job = a.job; this.endAnim(); this.paint(job.facelets, job.dim); }
     }
     if (!this.anim && this.queue.length) this.startAnim(this.queue.shift());
-    if (this.gyro) this.target.multiplyQuaternions(this.gyro, HELD);
+    // acubemy oppgir orienteringen relativt til kalibreringsgrepet (hvit ned, grønn foran) → HELD · q.
+    if (this.gyro) this.target.multiplyQuaternions(HELD, this.gyro);
     this.root.quaternion.slerp(this.target, 0.35);
     this.renderer.render(this.scene, this.camera);
   }

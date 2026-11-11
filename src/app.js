@@ -13,7 +13,9 @@ const fmt = (ms) => (ms / 1000).toFixed(2);
 
 const S = {
   facelets: SOLVED,
-  history: [], // våre siste tilstander; en tilstand fra acubemy som finnes her er gammel og ignoreres
+  history: [],
+  diag: {},
+  synced: false, // våre siste tilstander; en tilstand fra acubemy som finnes her er gammel og ignoreres
   mode: "drill", // drill | guided
   shortSetup: false,
   selection: new Set(DEFAULT_SELECTION),
@@ -258,8 +260,20 @@ function bind() {
   $("sel-all").addEventListener("click", () => { CASES.forEach((c) => S.selection.add(c.n)); renderPicker(); render(); });
   $("sel-none").addEventListener("click", () => { S.selection.clear(); renderPicker(); render(); });
   $("sel-asker").addEventListener("click", () => { S.selection = new Set(DEFAULT_SELECTION); renderPicker(); render(); });
+  $("sync").addEventListener("click", () => {
+    if (!window.acubemy) return;
+    S.phase = "wait"; S.cur = null; S.repeat = null;
+    adopt(acubemy.getFacelets());
+  });
   $("calib").addEventListener("click", () => { if (window.acubemy) acubemy.calibrateGyro(); });
   $("skip").addEventListener("click", () => { S.repeat = null; S.phase = "wait"; S.cur = null; if (f2lSolved(S.facelets)) startSetup(); else render(); });
+}
+
+function adopt(f) {
+  S.facelets = f;
+  S.history = [];
+  if (view3d) view3d.set(f, dimNow());
+  if (S.phase === "wait" && f2lSolved(f)) startSetup(); else render();
 }
 
 async function boot() {
@@ -278,18 +292,21 @@ async function boot() {
       $("device").className = d.connected ? "ok" : "warn";
     });
     acubemy.onStateChange((f) => {
-      // acubemy sender tilstanden sammen med trekket, men den kan være fra før trekket.
-      // Vi følger trekkene selv og bruker acubemys tilstand bare når den er helt ny (f.eks. etter reset).
-      if (!f || f.length !== 54 || f === S.facelets || S.history.includes(f)) return;
-      S.facelets = f;
-      S.history = [];
-      if (view3d) view3d.set(f, dimNow());
-      if (S.phase === "wait" && f2lSolved(f)) startSetup(); else render();
+      // Pluginen følger trekkene selv; acubemys tilstand kan ligge etter trekkene og overstyrer
+      // aldri mens du dreier. Den brukes ved oppstart og med «Synk med kuben». Vi teller hva som kommer,
+      // så vi kan se hvordan acubemy oppfører seg.
+      if (!f || f.length !== 54) return;
+      if (!S.synced) { adopt(f); S.synced = true; return; }
+      const back = S.history.lastIndexOf(f);
+      const k = f === S.facelets ? "lik" : back >= 0 ? `${S.history.length - back} bak` : "ukjent";
+      S.diag[k] = (S.diag[k] || 0) + 1;
+      $("diag").textContent = "acubemy-tilstand: " + Object.entries(S.diag).map(([a, b]) => `${a} ${b}`).join(" · ");
     });
     acubemy.onGyro((q) => { if (view3d) view3d.setGyro(q); });
     acubemy.onMove(({ face, prime, timestamp }) => onMove(face, prime ? 3 : 1, timestamp));
-    if (embedded) S.facelets = acubemy.getFacelets();
+    if (embedded && acubemy.getDevice().connected) { adopt(acubemy.getFacelets()); S.synced = true; }
   }
+  if (!embedded) S.synced = true;
   if (!embedded) $("device").textContent = "Utenfor acubemy: tastene U R F D L B (Shift = mot klokka) simulerer kuben i kubens egen ramme";
   window.__sim = (mv) => { const f = mv[0]; const a = mv.includes("2") ? 2 : mv.includes("'") ? 3 : 1; for (let i = 0; i < (a === 2 ? 2 : 1); i++) onMove(f, a === 2 ? 1 : a, performance.now()); };
   window.__state = S;
