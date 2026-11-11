@@ -205,7 +205,8 @@ function onMove(face, a) {
   S.facelets = turn(S.facelets, face, a);
   if (view3d) view3d.move(face, a, S.facelets, dimNow());
   // Grepet ved trekket og 120 ms etter (gyroen kan ligge litt etter trekket rett etter en rotasjon).
-  const mv = { face, amt: a, grip: liveGrip() };
+  const mv = { face, amt: a, grip: liveGrip() || cur.lastGrip || START_GRIP };
+  cur.lastGrip = mv.grip;
   mv.grips = mv.grip ? [mv.grip] : [];
   setTimeout(() => { const g = liveGrip(); if (g) mv.grips.push(g); }, 120);
   cur.executed.push(mv);
@@ -324,18 +325,16 @@ function withGrips(moves) {
 // som algoritmen forutsetter. F' U' F godtas altså ikke for y' R' U' R.
 function sameSolution(executed, algMoves) {
   if (canonical(executed) !== canonical(algMoves)) return false;
-  if (executed.some((m) => !m.grip)) return true; // uten gyro kan ikke rotasjonene kontrolleres
   const a = withGrips(executed), b = withGrips(algMoves);
   return a.length === b.length && a.every((m, i) => m.face === b[i].face && m.amt === b[i].amt && m.grips.some((g) => sameGrip(g, b[i].grips[0])));
 }
 
 // Det du gjorde, skrevet slik du holdt kuben (grep fra gyroen ved hvert trekk), med rotasjonene du tok.
 function didInYourGrip(executed) {
-  if (!executed.length || executed.some((m) => !m.grip)) return null;
   const out = [];
   let grip = START_GRIP;
   for (const m of executed) {
-    if (!sameGrip(m.grip, grip)) {
+    if (m.grip && !sameGrip(m.grip, grip)) {
       const r = yNeeded(grip, m.grip);
       out.push({ rot: r == null ? "(rotert)" : r });
       grip = m.grip;
@@ -368,7 +367,7 @@ function showOverlay() {
   } else {
     el.className = "on bad";
     el.innerHTML = `<div class="o-title">Annen løsning</div>
-      <div class="o-cmp">${r.did ? `<div><span>Du gjorde</span><code>${r.did}</code></div>` : ""}
+      <div class="o-cmp"><div><span>Du gjorde</span><code>${r.did}</code></div>
       <div><span>Skal være – ${c.source === "låst" ? "din låste løsning" : `boka s. ${c.bookPage}`}</span><code class="big">${c.alg}</code></div></div>
       <div class="o-keys"><span>Guidet <kbd>R4</kbd></span><span class="next">Prøv igjen <kbd>U</kbd></span></div>`;
   }
