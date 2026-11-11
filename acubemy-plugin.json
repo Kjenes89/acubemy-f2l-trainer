@@ -1,10 +1,10 @@
 {
   "sdk": 1,
-  "id": "vegard-probe",
-  "name": "Vegard probe",
+  "id": "vegard-f2l-trainer",
+  "name": "F2L-trener (Vegard)",
   "author": "Vegard",
-  "version": "0.0.2",
-  "description": "Test av plugin-miljøet: trekk, tilstand, gyro, lagring, nettverk.",
+  "version": "0.1.0",
+  "description": "F2L-drill der bare den valgte algoritmen per case teller, med guiding trekk for trekk.",
   "entry": "index.html",
-  "permissions": ["moves", "gyro", "state"]
+  "permissions": ["moves", "state"]
 }

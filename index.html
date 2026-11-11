@@ -3,131 +3,45 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>acubemy-probe v2</title>
-<style>
-  body { font: 15px/1.45 system-ui, sans-serif; background: #15181c; color: #e6e6e6; margin: 16px; }
-  h1 { font-size: 18px; margin: 0 0 12px; }
-  table { border-collapse: collapse; width: 100%; max-width: 720px; }
-  td { padding: 6px 8px; border-bottom: 1px solid #2a2f36; vertical-align: top; }
-  td:first-child { width: 38%; color: #9aa4ae; }
-  .ok { color: #5fd38d; } .bad { color: #ff7a7a; } .wait { color: #e8c35a; }
-  code { font: 13px ui-monospace, monospace; word-break: break-all; }
-  button { background: #2a2f36; color: #e6e6e6; border: 1px solid #3a414a; border-radius: 6px; padding: 6px 12px; font: inherit; cursor: pointer; margin: 4px 6px 0 0; }
-  textarea { width: 100%; max-width: 720px; height: 70px; background: #0f1215; color: #e6e6e6; border: 1px solid #3a414a; font: 12px ui-monospace, monospace; margin-top: 8px; }
-</style>
+<title>F2L-trener</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<h1>Test av acubemy-plugin v2 (lastet fra offentlig repo)</h1>
-<p>Hvis du ser denne siden, virker lasting fra GitHub. Ta 5 M, 5 M', 3 E og 3 S rolig (hold kuben grønn foran, hvit opp), og så 5 r og 5 r'. Trykk «Lag rapport» og les av rapporten (utklippstavle er blokkert, så skriv over de to siste linjene eller ta skjermbilde).</p>
-<table id="t"></table>
-<div>
-  <button id="b-net">Test nettverk (fetch)</button>
-  <button id="b-dl">Test nedlasting</button>
-  <button id="b-clip">Test utklippstavle</button>
-  <button id="b-rep">Lag rapport</button>
+<header>
+  <h1>F2L-trener</h1>
+  <span id="device" class="warn">Venter på acubemy …</span>
+</header>
+
+<div class="bar">
+  <div class="seg">
+    <button data-mode="drill" class="on">Drill</button>
+    <button data-mode="guided">Guidet</button>
+  </div>
+  <label class="chk"><input type="checkbox" id="short"> Kort oppsett</label>
+  <button id="toggle-picker">Caser · <span id="sel-count"></span></button>
+  <button id="skip">Hopp over</button>
 </div>
-<textarea id="rep" readonly placeholder="Rapporten havner her"></textarea>
+
+<div id="picker-wrap" hidden>
+  <div class="bar small">
+    <button id="sel-asker">Asker-utvalget (7, 8, 9, 16, 33)</button>
+    <button id="sel-all">Alle</button>
+    <button id="sel-none">Ingen</button>
+  </div>
+  <div id="picker"></div>
+</div>
+
+<main>
+  <section id="main" class="panel"></section>
+  <aside>
+    <section class="panel"><h2>Siste</h2><div id="result"></div></section>
+    <section class="panel"><h2>Økta</h2><div id="stats"></div></section>
+  </aside>
+</main>
+
+<footer class="muted small">M1 · FR-spor · hold hvit ned og grønn foran · algoritmene vises som i boka, sammenligningen skjer uten rotasjoner</footer>
 
 <script src="https://cdn.jsdelivr.net/gh/acubemy/plugin-sdk@1/v1.js"></script>
-<script>
-const R = {};
-const rows = [
-  ["embedded", "Kjører inne i acubemy"],
-  ["ready", "Handshake (onReady)"],
-  ["perm", "Tillatelser"],
-  ["device", "Kube"],
-  ["moves", "Trekk mottatt"],
-  ["last", "Siste 40 trekk"],
-  ["dt", "Tid mellom trekk (ms, siste 10)"],
-  ["state", "Kubetilstand (facelets)"],
-  ["solved", "isSolved()"],
-  ["gyro", "Gyro"],
-  ["ls", "localStorage"],
-  ["idb", "IndexedDB"],
-  ["net", "Nettverk (fetch POST)"],
-  ["dl", "Nedlasting av fil"],
-  ["clip", "Utklippstavle"],
-  ["pairs", "Motstående par (< 80 ms)"],
-  ["ua", "Nettleser"],
-];
-const t = document.getElementById("t");
-for (const [k, label] of rows) {
-  const tr = document.createElement("tr");
-  tr.innerHTML = `<td>${label}</td><td id="v-${k}" class="wait">–</td>`;
-  t.appendChild(tr);
-}
-function set(k, text, cls) {
-  R[k] = text;
-  const el = document.getElementById("v-" + k);
-  el.textContent = text;
-  el.className = cls || "";
-}
-
-set("embedded", window.parent !== window ? "ja" : "nei (åpnet direkte, tastatur U R F D L B simulerer trekk)", window.parent !== window ? "ok" : "bad");
-set("ua", navigator.userAgent, "");
-
-acubemy.onReady(({ permissions, device }) => {
-  set("ready", "ja", "ok");
-  set("perm", JSON.stringify(permissions), "ok");
-});
-acubemy.onDeviceChange((d) => set("device", JSON.stringify(d), d.connected ? "ok" : "bad"));
-
-let n = 0, last = [], times = [], prev = null, prevMove = null, pairs = [];
-acubemy.onMove(({ move, timestamp }) => {
-  n++;
-  last.push(move); if (last.length > 40) last.shift();
-  if (prev !== null) { times.push(Math.round(timestamp - prev)); if (times.length > 10) times.shift(); }
-  const OPP = {R:'L',L:'R',U:'D',D:'U',F:'B',B:'F'};
-  if (prevMove && OPP[prevMove[0]] === move[0] && prev !== null && timestamp - prev < 80) {
-    pairs.push(prevMove + '+' + move + '@' + Math.round(timestamp - prev));
-    if (pairs.length > 16) pairs.shift();
-    set("pairs", pairs.join("  "), "ok");
-  }
-  prevMove = move;
-  prev = timestamp;
-  set("moves", String(n), "ok");
-  set("last", last.join(" "), "");
-  set("dt", times.join(", "), "");
-  set("solved", String(acubemy.isSolved()), "");
-});
-acubemy.onStateChange((f) => { set("state", f, "ok"); set("solved", String(acubemy.isSolved()), ""); });
-let g = 0;
-acubemy.onGyro((q) => { g++; if (g % 20 === 1) set("gyro", `${g} meldinger, siste ${[q.x,q.y,q.z,q.w].map(v=>v.toFixed(2)).join(" ")}`, "ok"); });
-
-try { localStorage.setItem("probe", "1"); set("ls", "virker: " + localStorage.getItem("probe"), "ok"); }
-catch (e) { set("ls", "blokkert: " + e.name, "bad"); }
-try {
-  const req = indexedDB.open("probe", 1);
-  req.onsuccess = () => set("idb", "virker", "ok");
-  req.onerror = () => set("idb", "blokkert: " + (req.error && req.error.name), "bad");
-} catch (e) { set("idb", "blokkert: " + e.name, "bad"); }
-
-document.getElementById("b-net").onclick = async () => {
-  set("net", "venter …", "wait");
-  try {
-    const r = await fetch("https://httpbin.org/anything", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ probe: 1 }) });
-    const j = await r.json();
-    set("net", `virker: HTTP ${r.status}, origin sendt = ${j.headers && (j.headers.Origin || "ingen")}`, "ok");
-  } catch (e) { set("net", "feilet: " + e.message, "bad"); }
-};
-document.getElementById("b-dl").onclick = () => {
-  try {
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob(["probe\n"], { type: "text/plain" }));
-    a.download = "acubemy-probe.txt";
-    document.body.appendChild(a); a.click(); a.remove();
-    set("dl", "klikk sendt – kom det en fil «acubemy-probe.txt»? Skriv ja/nei i chatten", "wait");
-  } catch (e) { set("dl", "feilet: " + e.message, "bad"); }
-};
-document.getElementById("b-clip").onclick = async () => {
-  try { await navigator.clipboard.writeText("acubemy-probe"); set("clip", "virker", "ok"); }
-  catch (e) { set("clip", "blokkert: " + e.name, "bad"); }
-};
-document.getElementById("b-rep").onclick = () => {
-  const ta = document.getElementById("rep");
-  ta.value = rows.map(([k, label]) => `${label}: ${R[k] ?? "–"}`).join("\n");
-  ta.focus(); ta.select();
-};
-</script>
+<script type="module" src="src/app.js"></script>
 </body>
 </html>
