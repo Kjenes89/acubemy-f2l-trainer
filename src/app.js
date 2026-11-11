@@ -37,11 +37,12 @@ const S = {
 class Tracker {
   constructor(items) { this.items = items.map((m) => ({ ...m })); }
   get correcting() { return this.items.length > 0 && this.items[0].corr; }
-  step(face, a) {
+  step(face, a, grip = null) {
     const it = this.items;
     let i = 0;
+    const wrongGrip = (m) => grip && m && !m.corr && !m.auf && m.grip && !sameGrip(grip, m.grip);
     if (it[0] && it[0].face !== face && it[1] && OPPOSITE[it[0].face] === it[1].face && it[1].face === face && !it[0].corr) i = 1;
-    if (it[i] && it[i].face === face) {
+    if (it[i] && it[i].face === face && !wrongGrip(it[i])) {
       it[i].amt = (it[i].amt - a + 4) % 4;
       if (!it[i].amt) it.splice(i, 1);
       return true;
@@ -108,9 +109,7 @@ function finishCase() {
   const execStart = cur.execStart ?? end;
   const rec = execStart - cur.t0;
   const exec = end - execStart;
-  const did = canonical(cur.executed);
-  const accepted = [cur.c.alg, ...cur.c.alts].map((a) => canonical(expand(a).moves));
-  const ok = accepted.includes(did);
+  const ok = [cur.c.alg, ...cur.c.alts].some((a) => sameSolution(cur.executed, expand(a).moves));
   const quarters = (ms) => simplify(ms).filter((m) => m.face !== "D").reduce((s, m) => s + (m.amt === 2 ? 2 : 1), 0);
   const rawQ = cur.executed.filter((m) => m.face !== "D").length;
   const fixed = ok && rawQ > quarters(cur.alg.moves);
@@ -205,8 +204,12 @@ function onMove(face, a) {
   if (cur.recent.length > 4) cur.recent.shift();
   S.facelets = turn(S.facelets, face, a);
   if (view3d) view3d.move(face, a, S.facelets, dimNow());
-  cur.executed.push({ face, amt: a, grip: liveGrip() });
-  cur.guide.step(face, a);
+  // Grepet ved trekket og 120 ms etter (gyroen kan ligge litt etter trekket rett etter en rotasjon).
+  const mv = { face, amt: a, grip: liveGrip() };
+  mv.grips = mv.grip ? [mv.grip] : [];
+  setTimeout(() => { const g = liveGrip(); if (g) mv.grips.push(g); }, 120);
+  cur.executed.push(mv);
+  cur.guide.step(face, a, liveGrip());
   // Tiden starter ved første trekk som ikke er U (AUF), og nullstilles hvis kuben er tilbake i casen.
   if (cur.execStart == null && face !== "D") { cur.execStart = now; cur.execIdx = cur.executed.length - 1; }
   else if (cur.execStart != null && cur.startSet.has(S.facelets)) { cur.execStart = null; }
@@ -258,7 +261,7 @@ function algHtml(cur) {
     const need = g && head.grip ? yNeeded(g, head.grip) : "";
     if (need) {
       rotNow = need;
-      msg = `<div class="hint">Roter: <span class="mv now">${need}</span> <span class="muted small">(eller ta trekket uten rotasjon: ${gripNotation(head, g)})</span></div>`;
+      msg = `<div class="hint">Roter: <span class="mv now">${need}</span></div>`;
     } else if (need === null) {
       msg = `<div class="hint">Slik du holder kuben nå: <span class="mv now">${gripNotation(head, g)}</span></div>`;
     } else {
@@ -299,6 +302,31 @@ function caseCard(cur) {
     <div class="muted small">FR-spor · bok ${cur.c.bookNo}, s. ${cur.c.bookPage} · ${cur.c.source}</div>
     <div class="gc-alg">${cur.c.alg}</div>
     <div class="gc-stats"><div><span class="muted small">Beste (drill)</span><b>${best}</b></div><div><span class="muted small">Median</span><b>${med}</b></div></div>`;
+}
+
+// Trekk med grep: like flater på rad i samme grep slås sammen, U-trekk først og sist (AUF) tas bort.
+function withGrips(moves) {
+  const out = [];
+  for (const m of moves) {
+    const grips = m.grips || (m.grip ? [m.grip] : []);
+    const last = out[out.length - 1];
+    if (last && last.face === m.face && (!grips.length || last.grips.some((g) => grips.some((h) => sameGrip(g, h))))) {
+      last.amt = (last.amt + m.amt) % 4;
+      if (!last.amt) out.pop();
+    } else if (m.amt % 4) out.push({ face: m.face, amt: m.amt % 4, grips });
+  }
+  while (out.length && out[0].face === "D") out.shift();
+  while (out.length && out[out.length - 1].face === "D") out.pop();
+  return out;
+}
+
+// Samme løsning som algoritmen? Samme trekk, og – når gyroen gir grep – hvert trekk tatt i samme grep
+// som algoritmen forutsetter. F' U' F godtas altså ikke for y' R' U' R.
+function sameSolution(executed, algMoves) {
+  if (canonical(executed) !== canonical(algMoves)) return false;
+  if (executed.some((m) => !m.grip)) return true; // uten gyro kan ikke rotasjonene kontrolleres
+  const a = withGrips(executed), b = withGrips(algMoves);
+  return a.length === b.length && a.every((m, i) => m.face === b[i].face && m.amt === b[i].amt && m.grips.some((g) => sameGrip(g, b[i].grips[0])));
 }
 
 // Det du gjorde, skrevet slik du holdt kuben (grep fra gyroen ved hvert trekk), med rotasjonene du tok.
