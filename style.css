@@ -118,3 +118,6 @@ kbd { font: 12px ui-monospace, Consolas, monospace; color: var(--muted); }
   font: 700 28px/1.1 system-ui, sans-serif; z-index: 4; white-space: nowrap; pointer-events: none; }
 #remind.on { display: flex; }
 #remind .mv { background: var(--warn); color: #111; font: 700 32px ui-monospace, Consolas, monospace; padding: 2px 12px; border-radius: 8px; }
+
+select { background: #1b2027; color: var(--text); border: 1px solid #333b45; border-radius: 6px; padding: 4px 6px; font: inherit; }
+.radprog { color: var(--muted); font-size: 15px; letter-spacing: .05em; }

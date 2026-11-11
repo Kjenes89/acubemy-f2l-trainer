@@ -17,8 +17,13 @@
 <div class="bar">
   <div class="seg">
     <button data-mode="drill" class="on">Drill</button>
+    <button data-mode="rad">På rad</button>
     <button data-mode="guided">Guidet</button>
   </div>
+  <span id="rad-opts" class="chk" hidden>
+    <select id="rad-n"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="5">5</option><option value="10">10</option></select> på rad ·
+    <select id="rad-order"><option value="weakest" selected>svakeste først</option><option value="random">tilfeldig</option><option value="order">i rekkefølge</option></select>
+  </span>
   <label class="chk"><input type="checkbox" id="mixll" checked> Bland siste lag</label>
   <label class="chk" title="Casen vises med tilfeldig sidefarge foran (grønn, oransje, blå eller rød). Hold fortsatt grønn foran og se på skjermen."><input type="checkbox" id="colorswap" checked> Bytt farger</label>
   <button id="toggle-picker">Caser · <span id="sel-count"></span></button>
@@ -53,7 +58,7 @@
   </aside>
 </main>
 
-<footer class="muted small"><span id="logstatus"></span><br>Snarveier (fire like trekk) under casen: gul U4 = kalibrer gyro · hvit D4 = samme case igjen · oransje R4 = guidet av/på · rød L4 = neste case. I resultatvinduet: U = videre · rød L4 = gjenta · oransje R4 = guidet<br>M2.1 · casen lages på skjermen og trekkene dine brukes på den – den fysiske kuben trenger ikke stå i noen bestemt tilstand · FR-spor · hold grønn foran og hvit ned, og se på skjermen · algoritmene vises som i boka, og rotasjonene må gjøres (kontrolleres med gyroen)</footer>
+<footer class="muted small"><span id="logstatus"></span><br>Snarveier (fire like trekk) under casen: gul U4 = kalibrer gyro · hvit D4 = samme case igjen · oransje R4 = guidet av/på · rød L4 = neste case. I resultatvinduet: U = videre · rød L4 = gjenta · oransje R4 = guidet<br>M2.2 · casen lages på skjermen og trekkene dine brukes på den – den fysiske kuben trenger ikke stå i noen bestemt tilstand · FR-spor · hold grønn foran og hvit ned, og se på skjermen · algoritmene vises som i boka, og rotasjonene må gjøres (kontrolleres med gyroen)</footer>
 
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }</script>
 <script src="https://cdn.jsdelivr.net/gh/acubemy/plugin-sdk@1/v1.js"></script>
