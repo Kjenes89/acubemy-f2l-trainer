@@ -109,15 +109,23 @@ export class Cube3D {
   /** Grepet nå, lest fra gyroen: { U: sensorflate, F: …, R: … } for flatene som vender opp, mot deg, til høyre osv. */
   grip() {
     if (!this.gyro) return null;
-    const dirs = { U: [0, 1, 0], D: [0, -1, 0], F: [0, 0, 1], B: [0, 0, -1], R: [1, 0, 0], L: [-1, 0, 0] };
-    const g = {};
-    for (const [s, n] of Object.entries(NORMALS)) {
-      const v = new THREE.Vector3(...n).applyQuaternion(this.target);
-      let best = null, bd = -2;
-      for (const [w, d] of Object.entries(dirs)) { const dot = v.x * d[0] + v.y * d[1] + v.z * d[2]; if (dot > bd) { bd = dot; best = w; } }
-      g[best] = s;
-    }
-    return Object.keys(g).length === 6 ? g : null;
+    // Robust mot vipping i hånda: opp = flaten som peker mest opp; front = den av sideflatene som,
+    // sett ovenfra, peker mest mot deg. Grepet byttes bare når den nye flaten er tydelig (hysterese),
+    // så en vipp på 30–45° mens du dreier ikke leses som en rotasjon.
+    const v = {};
+    for (const [s, n] of Object.entries(NORMALS)) v[s] = new THREE.Vector3(...n).applyQuaternion(this.target);
+    const OPP = { U: "D", D: "U", R: "L", L: "R", F: "B", B: "F" };
+    const last = this.lastGrip;
+    let up = Object.keys(v).reduce((a, b) => (v[b].y > v[a].y ? b : a));
+    if (last && v[last.U].y > 0.5) up = last.U;
+    const sides = Object.keys(v).filter((s) => s !== up && s !== OPP[up]);
+    const horiz = (s) => { const h = new THREE.Vector2(v[s].x, v[s].z); return h.length() > 1e-6 ? h.normalize() : h; };
+    let front = sides.reduce((a, b) => (horiz(b).y > horiz(a).y ? b : a));
+    if (last && last.U === up && sides.includes(last.F) && horiz(last.F).y > 0.5) front = last.F;
+    const right = sides.filter((s) => s !== front && s !== OPP[front]).reduce((a, b) => (horiz(b).x > horiz(a).x ? b : a));
+    const g = { U: up, D: OPP[up], F: front, B: OPP[front], R: right, L: OPP[right] };
+    this.lastGrip = g;
+    return g;
   }
 
   setGyro(q) { this.gyro = new THREE.Quaternion(q.x, q.y, q.z, q.w); }

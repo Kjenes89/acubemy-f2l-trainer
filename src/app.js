@@ -332,7 +332,7 @@ function rotateReminder(cur) {
     const head = cur.guide.items.find((m) => !m.corr);
     if (head && !head.auf) return ""; // guidet viser rotasjonen i algoritmelinja i stedet
   }
-  return `<div class="remind">${need ? `Roter tilbake: <span class="mv now">${need}</span>` : "Hold kuben med hvit ned og grønn foran"}</div>`;
+  return need ? `Roter tilbake <span class="mv">${need}</span>` : "Hold hvit ned og grønn foran";
 }
 
 function algHtml(cur) {
@@ -494,10 +494,12 @@ function render() {
     const timer = (S.phase === "result" || S.phase === "pause") && S.last ? fmt(S.last.exec) : cur.execStart != null ? fmt(performance.now() - cur.execStart) : "0.00";
     main = `${view3d ? "" : `<div class="cube">${cubeSvg(S.facelets, { colorMap: colorMapFor(cur.colorShift || 0) })}</div>`}
       <div id="timer" class="timer">${timer}</div>
-      ${S.phase === "case" ? rotateReminder(cur) : ""}
       ${guided && S.phase === "case" ? algHtml(cur) : ""}`;
   }
   $("phase").innerHTML = main;
+  const rem = S.phase === "case" && cur ? rotateReminder(cur) : "";
+  $("remind").innerHTML = rem;
+  $("remind").classList.toggle("on", !!rem);
   $("main").classList.toggle("guided", guided && !!cur);
   $("gcard").innerHTML = guided && cur ? caseCard(cur) : "";
   if (view3d && S.phaseShown !== S.phase) { S.phaseShown = S.phase; view3d.redim(dimNow()); }

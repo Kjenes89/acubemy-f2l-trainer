@@ -111,3 +111,10 @@ kbd { font: 12px ui-monospace, Consolas, monospace; color: var(--muted); }
 .blk.done { opacity: .55; }
 .blk.done b::after { content: " ✓"; color: var(--good); }
 .blocktimer { font: 600 26px ui-monospace, Consolas, monospace; margin-left: auto; }
+
+/* påminnelse om å rotere tilbake: stort, rett over kuben */
+#remind { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; align-items: center; gap: 12px;
+  background: rgba(60, 44, 6, .92); border: 2px solid var(--warn); color: var(--warn); border-radius: 14px; padding: 12px 20px;
+  font: 700 28px/1.1 system-ui, sans-serif; z-index: 4; white-space: nowrap; pointer-events: none; }
+#remind.on { display: flex; }
+#remind .mv { background: var(--warn); color: #111; font: 700 32px ui-monospace, Consolas, monospace; padding: 2px 12px; border-radius: 8px; }
