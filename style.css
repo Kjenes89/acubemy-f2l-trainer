@@ -56,3 +56,8 @@ footer { margin-top: 16px; }
 #flash { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #fff; padding: 6px 14px; border-radius: 999px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; }
 #flash.on { opacity: 1; }
 .mv.auf { margin-right: 6px; }
+#verdict { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: rgba(40, 8, 10, .82); border: 2px solid var(--bad); border-radius: 12px; z-index: 5; text-align: center; padding: 16px; pointer-events: none; }
+#verdict.on { display: flex; }
+#verdict .v-title { font: 700 44px/1.1 system-ui, sans-serif; color: var(--bad); }
+#verdict .v-sub { color: var(--text); font-size: 16px; }
+#verdict .v-alg { font: 600 26px/1.3 ui-monospace, Consolas, monospace; color: #fff; }

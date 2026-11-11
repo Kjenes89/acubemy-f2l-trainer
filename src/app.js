@@ -110,6 +110,7 @@ function finishCase() {
   S.last = res;
   S.repeat = ok ? null : cur.c.n;
   if (S.mode === "guided") S.repeat = cur.c.n; // guidet: samme case til du går ut av guidet
+  if (!ok) showVerdict(cur.c);
   // Kort pause så siste trekk rekker å vises; trekk i pausen ignoreres.
   S.phase = "pause";
   render();
@@ -142,6 +143,20 @@ function shortcut(kind) {
   }
 }
 
+// Stor beskjed over kuben ved annen løsning; står til første trekk i neste forsøk (minst 1,5 s).
+function showVerdict(c) {
+  const el = $("verdict");
+  el.innerHTML = `<div class="v-title">Annen løsning</div><div class="v-sub">Samme case igjen – valgt:</div><div class="v-alg">${c.alg}</div>`;
+  el.classList.add("on");
+  showVerdict.until = performance.now() + 1500;
+  clearTimeout(showVerdict.t);
+  showVerdict.t = setTimeout(() => el.classList.remove("on"), 4000);
+}
+function hideVerdict() {
+  if (performance.now() < (showVerdict.until || 0)) return;
+  $("verdict").classList.remove("on");
+}
+
 function flash(text) {
   const el = $("flash");
   el.textContent = text;
@@ -153,6 +168,7 @@ function flash(text) {
 function onMove(face, a, ts) {
   if (S.phase !== "case") return;
   const cur = S.cur;
+  hideVerdict();
   cur.snaps.push({ items: cur.guide.items.map((m) => ({ ...m })), exec: cur.executed.length });
   if (cur.snaps.length > 4) cur.snaps.shift();
   const now = performance.now();
@@ -265,7 +281,8 @@ function render() {
     main = `<div class="big">Velg minst én case.</div>`;
   } else if (S.phase === "case" || S.phase === "pause") {
     const guided = S.mode === "guided";
-    main = `<div class="caseinfo"><b>${cur.c.n}</b> <span class="muted">bok ${cur.c.bookNo} · s. ${cur.c.bookPage} · ${cur.c.source}</span></div>
+    // Casenavnet bare i guidet – i drill skal casen kjennes igjen fra kuben.
+    main = `${guided ? `<div class="caseinfo"><b>${cur.c.n}</b> <span class="muted">bok ${cur.c.bookNo} · s. ${cur.c.bookPage} · ${cur.c.source}</span></div>` : ""}
       ${view3d ? "" : `<div class="cube">${cubeSvg(S.facelets)}</div>`}
       <div id="timer" class="timer">${S.phase === "pause" && S.last ? fmt(S.last.time) : "0.00"}</div>
       ${algHtml(cur, guided)}`;
