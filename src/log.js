@@ -2,7 +2,7 @@
 // Sandkassen i acubemy blokkerer lagring i nettleseren, men tillater fetch (testet 11.11.).
 // Postene samles og sendes i bunter; feiler sendingen, prøves det igjen ved neste sending.
 
-export const LOG_URL = ""; // settes når Worker-adressen er kjent, f.eks. "https://pll-vk-7q3.<konto>.workers.dev/api/log"
+export const LOG_URL = "https://pll-vk-7q3.vegard-kjenes.workers.dev/api/log";
 
 const SESSION = new Date().toISOString().replace(/[:.]/g, "-") + "-" + Math.random().toString(36).slice(2, 6);
 let buffer = [];
