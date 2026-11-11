@@ -52,3 +52,7 @@ th { color: var(--muted); font-weight: 500; }
 .case .n { font-weight: 700; } .case .b { color: var(--muted); font-size: 12px; align-self: center; }
 .case .a { grid-column: 1 / -1; font: 11px ui-monospace, Consolas, monospace; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 footer { margin-top: 16px; }
+#main { position: relative; }
+#flash { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #fff; padding: 6px 14px; border-radius: 999px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; }
+#flash.on { opacity: 1; }
+.mv.auf { margin-right: 6px; }

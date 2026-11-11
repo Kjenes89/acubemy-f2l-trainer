@@ -44,12 +44,15 @@ class Tracker {
 }
 
 // Slå sammen AUF med eventuelle U-trekk i starten av algoritmen.
+// Casens AUF = tilfeldig AUF slått sammen med U-trekkene algoritmen starter med (bokas «U2» o.l.).
+// De U-tokenene skjules i algoritmelinja; AUF-en vises for seg, i parentes.
 function withPreAuf(aufAmt, algMoves) {
   const moves = algMoves.map((m) => ({ ...m }));
-  let amt = aufAmt, tok = -1;
-  while (moves.length && moves[0].face === "D") { amt += moves[0].amt; tok = moves[0].tok; moves.shift(); }
+  let amt = aufAmt;
+  const hidden = new Set();
+  while (moves.length && moves[0].face === "D") { amt += moves[0].amt; hidden.add(moves[0].tok); moves.shift(); }
   amt %= 4;
-  return { items: amt ? [{ face: "D", amt, tok }, ...moves] : moves, skippedTok: amt ? -1 : tok };
+  return { items: amt ? [{ face: "D", amt, tok: -1, auf: true }, ...moves] : moves, hidden, aufAmt: amt };
 }
 
 // ---------- casevalg og oppsett ----------
@@ -77,8 +80,8 @@ function startCase(sameAgain = false) {
     cur = { c, alg, auf: (4 - auf) % 4, startState: start };
   }
   S.facelets = simplify(cur.startState).reduce((st, m) => turn(st, m.face, m.amt), SOLVED);
-  const { items, skippedTok } = withPreAuf(cur.auf, cur.alg.moves);
-  Object.assign(cur, { guide: new Tracker(items), skippedTok, executed: [], t0: performance.now(), firstMove: null });
+  const { items, hidden, aufAmt } = withPreAuf(cur.auf, cur.alg.moves);
+  Object.assign(cur, { guide: new Tracker(items), hidden, aufAmt, executed: [], snaps: [], recent: [], t0: performance.now(), firstMove: null });
   S.cur = cur;
   S.phase = "case";
   if (view3d) view3d.set(S.facelets, dimNow());
@@ -113,14 +116,57 @@ function finishCase() {
 }
 
 // ---------- trekk inn ----------
+// Snarveier som i acubemy (fire like kvartdreiinger, farge = flate slik du holder kuben):
+// gul (U4) = kalibrer gyro, hvit (D4) = prøv casen igjen, oransje (R4) = guidet av/på, rød (L4) = neste case.
+const SHORTCUT = { D: "gyro", U: "retry", L: "guided", R: "next" }; // nøkkel = flate i kubens egen ramme
+const SHORTCUT_MS = 1500;
+
+function shortcut(kind) {
+  if (kind === "gyro") {
+    if (window.acubemy) acubemy.calibrateGyro();
+    const snap = S.cur.snaps[S.cur.snaps.length - 4];
+    if (snap) { S.cur.guide.items = snap.items; S.cur.executed.length = snap.exec; S.cur.recent = []; S.cur.snaps = []; }
+    flash("Gyro kalibrert");
+    render();
+  } else if (kind === "retry") {
+    flash("Samme case igjen");
+    startCase(true);
+  } else if (kind === "guided") {
+    if (S.mode === "guided") { S.mode = "drill"; S.repeat = null; flash("Drill"); startCase(); }
+    else { S.mode = "guided"; flash("Guidet"); startCase(true); }
+  } else if (kind === "next") {
+    S.repeat = null;
+    flash("Neste case");
+    startCase();
+  }
+}
+
+function flash(text) {
+  const el = $("flash");
+  el.textContent = text;
+  el.classList.add("on");
+  clearTimeout(flash.t);
+  flash.t = setTimeout(() => el.classList.remove("on"), 900);
+}
+
 function onMove(face, a, ts) {
   if (S.phase !== "case") return;
   const cur = S.cur;
+  cur.snaps.push({ items: cur.guide.items.map((m) => ({ ...m })), exec: cur.executed.length });
+  if (cur.snaps.length > 4) cur.snaps.shift();
+  const now = performance.now();
+  cur.recent.push({ face, a, t: now });
+  if (cur.recent.length > 4) cur.recent.shift();
   S.facelets = turn(S.facelets, face, a);
   if (view3d) view3d.move(face, a, S.facelets, dimNow());
-  if (cur.firstMove == null) cur.firstMove = performance.now();
+  if (cur.firstMove == null) cur.firstMove = now;
   cur.executed.push({ face, amt: a });
   cur.guide.step(face, a);
+  const r = cur.recent;
+  if (r.length === 4 && r.every((m) => m.face === face && m.a === a) && now - r[0].t < SHORTCUT_MS && SHORTCUT[face]) {
+    shortcut(SHORTCUT[face]);
+    return;
+  }
   if (f2lSolved(S.facelets)) finishCase(); else render();
 }
 
@@ -154,8 +200,10 @@ function algHtml(cur, guided) {
     msg = `<div class="fix">Angre: ${chips(fixes, "bad")}</div>`;
   } else if (head) {
     const g = liveGrip();
-    const book = head.grip ? gripNotation(head, head.grip) : heldNotation(head);
-    if (g && head.grip && !sameGrip(g, head.grip)) {
+    const book = head.grip ? gripNotation(head, head.grip) : notate(head);
+    if (head.auf) {
+      msg = `<div class="hint">Først AUF: <span class="mv now">${notate(head)}</span></div>`;
+    } else if (g && head.grip && !sameGrip(g, head.grip)) {
       msg = `<div class="hint">Kuben står ikke rotert som i algoritmen. Slik du holder den nå: <span class="mv now">${gripNotation(head, g)}</span></div>`;
     } else {
       msg = `<div class="hint">Neste: <span class="mv now">${book}</span></div>`;
@@ -167,9 +215,13 @@ function algHtml(cur, guided) {
 function algLine(cur, head) {
   const toks = cur.alg.tokens;
   const nowTok = head ? head.tok : toks.length;
-  const auf = head && head.tok === -1 ? `<span class="mv now">${heldNotation(head)}</span><span class="sep">AUF</span>` : "";
+  const aufNow = head && head.auf;
+  const auf = cur.aufAmt
+    ? `<span class="mv auf ${aufNow ? "now" : "done"}">(${notate({ face: "D", amt: cur.aufAmt })})</span>`
+    : "";
   const parts = toks.map((t, i) => {
-    const cls = i < nowTok || i === cur.skippedTok ? "done" : i === nowTok ? "now" : "";
+    if (cur.hidden.has(i)) return "";
+    const cls = !aufNow && i < nowTok ? "done" : !aufNow && i === nowTok ? "now" : "";
     return `<span class="mv ${cls}">${t}</span>`;
   }).join("");
   return `<div class="alg">${auf}${parts}</div>`;
@@ -237,6 +289,7 @@ function bind() {
     const was = S.mode;
     S.mode = b.dataset.mode;
     if (was === "guided" && S.mode === "drill") S.repeat = null; // tilbake til vanlig utvalg etter denne casen
+    if (was === "drill" && S.mode === "guided" && S.cur) { startCase(true); return; }
     render();
   }));
   $("mixll").addEventListener("change", (e) => { S.mixLL = e.target.checked; });
