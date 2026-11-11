@@ -39,10 +39,10 @@ function lastLayerMask(h) {
 
 const GREY = "#3a3d42";
 
-export function cubeSvg(facelets, { dimLastLayer = true } = {}) {
+export function cubeSvg(facelets, { dimLastLayer = true, colorMap = {} } = {}) {
   const h = heldFaces(facelets);
   const grey = dimLastLayer ? lastLayerMask(h) : new Set();
-  const color = (f, i) => (grey.has(f + i) ? GREY : COLORS[h[f][i]]);
+  const color = (f, i) => (grey.has(f + i) ? GREY : COLORS[colorMap[h[f][i]] || h[f][i]]);
   let out = "";
   for (let i = 0; i < 9; i++) out += quad(HELD_POS.U((i / 3) | 0, i % 3).map((v, k) => (k === 1 ? 1.5 : v)), [1, 0, 0], [0, 0, 1], color("U", i));
   for (let i = 0; i < 9; i++) out += quad(HELD_POS.F((i / 3) | 0, i % 3).map((v, k) => (k === 2 ? 1.5 : v)), [1, 0, 0], [0, -1, 0], color("F", i));

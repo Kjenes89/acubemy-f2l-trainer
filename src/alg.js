@@ -133,3 +133,13 @@ export function gripNotation(m, grip) {
 export function sameGrip(a, b) {
   return a && b && a.U === b.U && a.F === b.F;
 }
+
+/** Grepet etter en rotasjon (for å finne hvilken rotasjon som trengs). */
+export function rotateGrip(grip, axis, times) { return rotate(grip, axis, times); }
+
+/** Hvilken y-rotasjon tar grepet `from` til `to`? «y», «y2», «y'», "" (allerede likt) eller null (ikke bare y). */
+export function yNeeded(from, to) {
+  if (sameGrip(from, to)) return "";
+  for (const [t, name] of [[1, "y"], [2, "y2"], [3, "y'"]]) if (sameGrip(rotate(from, "y", t), to)) return name;
+  return null;
+}
