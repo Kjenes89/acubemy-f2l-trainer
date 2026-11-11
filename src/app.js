@@ -369,7 +369,7 @@ function showOverlay() {
     el.className = "on bad";
     el.innerHTML = `<div class="o-title">Annen løsning</div>
       <div class="o-cmp">${r.did ? `<div><span>Du gjorde</span><code>${r.did}</code></div>` : ""}
-      <div><span>Skal være</span><code class="big">${c.alg}</code></div></div>
+      <div><span>Skal være – ${c.source === "låst" ? "din låste løsning" : `boka s. ${c.bookPage}`}</span><code class="big">${c.alg}</code></div></div>
       <div class="o-keys"><span>Guidet <kbd>R4</kbd></span><span class="next">Prøv igjen <kbd>U</kbd></span></div>`;
   }
 }
