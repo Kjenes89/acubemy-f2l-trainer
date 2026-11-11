@@ -18,7 +18,8 @@ function coord(face, r, c) {
   }
 }
 
-const STICKERS = [];
+/** Posisjon og normal for hvert av de 54 klistremerkene i kubens egen ramme (x = R, y = U, z = F). */
+export const STICKERS = [];
 for (let i = 0; i < 54; i++) {
   const face = FACES[(i / 9) | 0];
   const k = i % 9;

@@ -3,6 +3,9 @@ import { expand, invert, simplify, canonical, heldNotation } from "./alg.js";
 import { CASES, CASE_BY_N, DEFAULT_SELECTION, LL_SCRAMBLERS } from "./cases.js";
 import { cubeSvg } from "./view.js";
 
+let view3d = null;
+const dimNow = () => S.phase === "case";
+
 const $ = (id) => document.getElementById(id);
 const embedded = window.parent !== window;
 const rnd = (n) => Math.floor(Math.random() * n);
@@ -10,6 +13,7 @@ const fmt = (ms) => (ms / 1000).toFixed(2);
 
 const S = {
   facelets: SOLVED,
+  history: [], // våre siste tilstander; en tilstand fra acubemy som finnes her er gammel og ignoreres
   mode: "drill", // drill | guided
   shortSetup: false,
   selection: new Set(DEFAULT_SELECTION),
@@ -111,7 +115,10 @@ function finishCase() {
 
 // ---------- trekk inn ----------
 function onMove(face, a, ts) {
+  S.history.push(S.facelets);
+  if (S.history.length > 12) S.history.shift();
   S.facelets = turn(S.facelets, face, a);
+  if (view3d) view3d.move(face, a, S.facelets, dimNow());
   if (S.phase === "wait") {
     if (f2lSolved(S.facelets)) startSetup(); else render();
     return;
@@ -219,11 +226,12 @@ function render() {
   } else if (S.phase === "case") {
     const guided = S.mode === "guided";
     main = `<div class="caseinfo"><b>${cur.c.n}</b> <span class="muted">bok ${cur.c.bookNo} · s. ${cur.c.bookPage} · ${cur.c.source}</span></div>
-      <div class="cube">${cubeSvg(S.facelets)}</div>
+      ${view3d ? "" : `<div class="cube">${cubeSvg(S.facelets)}</div>`}
       <div id="timer" class="timer">0.00</div>
       ${algHtml(cur, guided)}`;
   }
-  $("main").innerHTML = main;
+  $("phase").innerHTML = main;
+  if (view3d && S.phaseShown !== S.phase) { S.phaseShown = S.phase; view3d.redim(dimNow()); }
   $("result").innerHTML = resultHtml();
   $("stats").innerHTML = statsHtml();
   $("sel-count").textContent = `${S.selection.size} valgt`;
@@ -250,22 +258,35 @@ function bind() {
   $("sel-all").addEventListener("click", () => { CASES.forEach((c) => S.selection.add(c.n)); renderPicker(); render(); });
   $("sel-none").addEventListener("click", () => { S.selection.clear(); renderPicker(); render(); });
   $("sel-asker").addEventListener("click", () => { S.selection = new Set(DEFAULT_SELECTION); renderPicker(); render(); });
+  $("calib").addEventListener("click", () => { if (window.acubemy) acubemy.calibrateGyro(); });
   $("skip").addEventListener("click", () => { S.repeat = null; S.phase = "wait"; S.cur = null; if (f2lSolved(S.facelets)) startSetup(); else render(); });
 }
 
-function boot() {
+async function boot() {
   bind();
+  try {
+    const { Cube3D } = await import("./view3d.js");
+    view3d = new Cube3D($("cube3d"));
+    view3d.set(S.facelets, false);
+  } catch (e) {
+    console.warn("3D-visning utilgjengelig, bruker 2D", e);
+    $("cube3d").hidden = true;
+  }
   if (window.acubemy) {
     acubemy.onDeviceChange((d) => {
       $("device").textContent = d.connected ? d.deviceName || "Kube tilkoblet" : "Ingen kube – koble til i acubemy";
       $("device").className = d.connected ? "ok" : "warn";
     });
     acubemy.onStateChange((f) => {
-      if (f && f.length === 54 && f !== S.facelets) {
-        S.facelets = f;
-        if (S.phase === "wait" && f2lSolved(f)) startSetup(); else render();
-      }
+      // acubemy sender tilstanden sammen med trekket, men den kan være fra før trekket.
+      // Vi følger trekkene selv og bruker acubemys tilstand bare når den er helt ny (f.eks. etter reset).
+      if (!f || f.length !== 54 || f === S.facelets || S.history.includes(f)) return;
+      S.facelets = f;
+      S.history = [];
+      if (view3d) view3d.set(f, dimNow());
+      if (S.phase === "wait" && f2lSolved(f)) startSetup(); else render();
     });
+    acubemy.onGyro((q) => { if (view3d) view3d.setGyro(q); });
     acubemy.onMove(({ face, prime, timestamp }) => onMove(face, prime ? 3 : 1, timestamp));
     if (embedded) S.facelets = acubemy.getFacelets();
   }
