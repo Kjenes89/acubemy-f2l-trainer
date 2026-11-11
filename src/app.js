@@ -125,10 +125,18 @@ function finishCase() {
     n: cur.c.n, ok, fixed, guided, rec, exec, total: rec + exec,
     tps: exec > 0 ? execMoves / (exec / 1000) : 0,
     median: median(st.exec), prevMedian, attempts: S.attempts.count,
-    did: simplify(cur.executed).map(heldNotation).join(" "),
+    did: didInYourGrip(cur.executed),
   };
   S.repeat = ok ? null : cur.c.n;
   if (guided) S.repeat = cur.c.n; // guidet: samme case til du går ut av guidet
+  if (guided) {
+    // Mengdetrening: ingen resultatvindu, samme case igjen straks siste trekk er vist.
+    flash(ok ? `${fmt(exec)} ✓` : "Annen løsning");
+    S.phase = "pause";
+    render();
+    setTimeout(() => { if (S.phase === "pause") startCase(true); }, 300);
+    return;
+  }
   S.phase = "result";
   S.resultRecent = [];
   render();
@@ -197,7 +205,7 @@ function onMove(face, a) {
   if (cur.recent.length > 4) cur.recent.shift();
   S.facelets = turn(S.facelets, face, a);
   if (view3d) view3d.move(face, a, S.facelets, dimNow());
-  cur.executed.push({ face, amt: a });
+  cur.executed.push({ face, amt: a, grip: liveGrip() });
   cur.guide.step(face, a);
   // Tiden starter ved første trekk som ikke er U (AUF), og nullstilles hvis kuben er tilbake i casen.
   if (cur.execStart == null && face !== "D") { cur.execStart = now; cur.execIdx = cur.executed.length - 1; }
@@ -293,6 +301,25 @@ function caseCard(cur) {
     <div class="gc-stats"><div><span class="muted small">Beste (drill)</span><b>${best}</b></div><div><span class="muted small">Median</span><b>${med}</b></div></div>`;
 }
 
+// Det du gjorde, skrevet slik du holdt kuben (grep fra gyroen ved hvert trekk), med rotasjonene du tok.
+function didInYourGrip(executed) {
+  if (!executed.length || executed.some((m) => !m.grip)) return null;
+  const out = [];
+  let grip = START_GRIP;
+  for (const m of executed) {
+    if (!sameGrip(m.grip, grip)) {
+      const r = yNeeded(grip, m.grip);
+      out.push({ rot: r == null ? "(rotert)" : r });
+      grip = m.grip;
+    }
+    const f = Object.keys(grip).find((k) => grip[k] === m.face);
+    const last = out[out.length - 1];
+    if (last && last.face === f) { last.amt = (last.amt + m.amt) % 4; if (!last.amt) out.pop(); }
+    else out.push({ face: f, amt: m.amt });
+  }
+  return out.map((t) => t.rot ?? t.face + (t.amt === 2 ? "2" : t.amt === 3 ? "'" : "")).join(" ");
+}
+
 // ---------- resultatvindu ----------
 function showOverlay() {
   const r = S.last, c = CASE_BY_N[r.n];
@@ -313,9 +340,8 @@ function showOverlay() {
   } else {
     el.className = "on bad";
     el.innerHTML = `<div class="o-title">Annen løsning</div>
-      <div class="o-cmp"><div><span>Du gjorde</span><code>${r.did || "–"}</code></div>
-      <div><span>Skal være</span><code class="big">${c.alg}</code></div>
-      <div><span class="muted">uten rotasjoner</span><code>${simplify(expand(c.alg).moves).map(heldNotation).join(" ")}</code></div></div>
+      <div class="o-cmp">${r.did ? `<div><span>Du gjorde</span><code>${r.did}</code></div>` : ""}
+      <div><span>Skal være</span><code class="big">${c.alg}</code></div></div>
       <div class="o-keys"><span>Guidet <kbd>R4</kbd></span><span class="next">Prøv igjen <kbd>U</kbd></span></div>`;
   }
 }
@@ -350,7 +376,7 @@ function render() {
   if (S.phase === "idle") {
     main = `<div class="big">Velg minst én case.</div>`;
   } else {
-    const timer = S.phase === "result" && S.last ? fmt(S.last.exec) : cur.execStart != null ? fmt(performance.now() - cur.execStart) : "0.00";
+    const timer = (S.phase === "result" || S.phase === "pause") && S.last ? fmt(S.last.exec) : cur.execStart != null ? fmt(performance.now() - cur.execStart) : "0.00";
     main = `${view3d ? "" : `<div class="cube">${cubeSvg(S.facelets, { colorMap: colorMapFor(cur.colorShift || 0) })}</div>`}
       <div id="timer" class="timer">${timer}</div>
       ${S.phase === "case" ? rotateReminder(cur) : ""}
