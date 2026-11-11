@@ -72,7 +72,8 @@ export class Cube3D {
       STICKERS.forEach((s, i) => { const k = s.pos.join(","); if (!byPos.has(k)) byPos.set(k, []); byPos.get(k).push(i); });
       for (const idx of byPos.values()) if (idx.some((i) => facelets[i] === "D")) idx.forEach((i) => grey.add(i));
     }
-    this.stickers.forEach((m, i) => m.material.color.set(grey.has(i) ? GREY : COLORS[facelets[i]]));
+    const map = this.colorMap || {};
+    this.stickers.forEach((m, i) => m.material.color.set(grey.has(i) ? GREY : COLORS[map[facelets[i]] || facelets[i]]));
   }
 
   /** Nytt trekk: animer laget, og mal den nye tilstanden når animasjonen er ferdig. */
@@ -90,6 +91,12 @@ export class Cube3D {
     this.queue = [];
     this.endAnim();
     this.paint(facelets, dim);
+  }
+
+  /** Fargebytte på skjermen: sidefargene roteres som om kuben var snudd (y), hvit/gul står. */
+  setColorShift(k) {
+    const ring = ["F", "L", "B", "R"]; // grønn, oransje, blå, rød rundt kuben slik den holdes
+    this.colorMap = Object.fromEntries(ring.map((c, i) => [c, ring[(i + k) % 4]]));
   }
 
   /** Bytt grå/full farge uten å avbryte animasjon. */

@@ -15,6 +15,7 @@ const S = {
   facelets: SOLVED, // den VIRTUELLE kuben: casen lages her, og trekkene fra den fysiske kuben brukes på den
   mode: "drill", // drill | guided
   mixLL: true,
+  colorSwap: true,
   selection: new Set(DEFAULT_SELECTION),
   phase: "idle", // idle (ingen caser valgt) | case | pause (kort pause mellom caser)
   cur: null,
@@ -77,14 +78,14 @@ function startCase(sameAgain = false) {
     const pre = S.mixLL ? [...expand(LL_SCRAMBLERS[rnd(LL_SCRAMBLERS.length)]).moves, { face: "D", amt: rnd(4) }] : [];
     const auf = rnd(4);
     const start = simplify([...pre, ...invert(alg.moves), { face: "D", amt: auf }]);
-    cur = { c, alg, auf: (4 - auf) % 4, startState: start };
+    cur = { c, alg, auf: (4 - auf) % 4, startState: start, colorShift: S.colorSwap ? rnd(4) : 0 };
   }
   S.facelets = simplify(cur.startState).reduce((st, m) => turn(st, m.face, m.amt), SOLVED);
   const { items, hidden, aufAmt } = withPreAuf(cur.auf, cur.alg.moves);
   Object.assign(cur, { guide: new Tracker(items), hidden, aufAmt, executed: [], snaps: [], recent: [], t0: performance.now(), firstMove: null });
   S.cur = cur;
   S.phase = "case";
-  if (view3d) view3d.set(S.facelets, dimNow());
+  if (view3d) { view3d.setColorShift(cur.colorShift || 0); view3d.set(S.facelets, dimNow()); }
   render();
   tick();
 }
@@ -293,6 +294,7 @@ function bind() {
     render();
   }));
   $("mixll").addEventListener("change", (e) => { S.mixLL = e.target.checked; });
+  $("colorswap").addEventListener("change", (e) => { S.colorSwap = e.target.checked; });
   $("toggle-picker").addEventListener("click", () => { $("picker-wrap").hidden = !$("picker-wrap").hidden; renderPicker(); });
   $("picker").addEventListener("click", (e) => {
     const b = e.target.closest(".case"); if (!b) return;
