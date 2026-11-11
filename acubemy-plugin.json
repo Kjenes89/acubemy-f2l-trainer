@@ -1,0 +1,10 @@
+{
+  "sdk": 1,
+  "id": "vegard-probe",
+  "name": "Vegard probe",
+  "author": "Vegard",
+  "version": "0.0.2",
+  "description": "Test av plugin-miljøet: trekk, tilstand, gyro, lagring, nettverk.",
+  "entry": "index.html",
+  "permissions": ["moves", "gyro", "state"]
+}
