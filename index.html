@@ -17,11 +17,11 @@
     <button data-mode="drill" class="on">Drill</button>
     <button data-mode="guided">Guidet</button>
   </div>
-  <label class="chk"><input type="checkbox" id="short"> Kort oppsett</label>
+  <label class="chk"><input type="checkbox" id="mixll" checked> Bland siste lag</label>
   <button id="toggle-picker">Caser · <span id="sel-count"></span></button>
   <button id="calib" title="Hold hvit ned og grønn foran, og trykk">Kalibrer gyro</button>
-  <button id="sync" title="Hent kubetilstanden fra acubemy på nytt (hvis skjermen og kuben er ulike)">Synk med kuben</button>
-  <button id="skip">Hopp over</button>
+  <button id="retry" title="Start samme case på nytt">Prøv igjen</button>
+  <button id="skip">Neste case</button>
 </div>
 
 <div id="picker-wrap" hidden>
@@ -44,7 +44,7 @@
   </aside>
 </main>
 
-<footer class="muted small"><span id="diag"></span><br>M1.2 · FR-spor · hold hvit ned og grønn foran · algoritmene vises som i boka, sammenligningen skjer uten rotasjoner</footer>
+<footer class="muted small">M1.3 · casen lages på skjermen og trekkene dine brukes på den – den fysiske kuben trenger ikke stå i noen bestemt tilstand · FR-spor · hold grønn foran og hvit ned, og se på skjermen · algoritmene vises som i boka, sammenligningen skjer uten rotasjoner</footer>
 
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }</script>
 <script src="https://cdn.jsdelivr.net/gh/acubemy/plugin-sdk@1/v1.js"></script>

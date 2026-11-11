@@ -8,13 +8,13 @@ acubemy tar seg av Bluetooth-tilkoblingen; pluginen får trekk og kubetilstand.
 ## Bruk
 
 acubemy → Games & Plugins → Developer → `Kjenes89/acubemy-f2l-trainer@main` → Load.
-Hold kuben med hvit ned og grønn foran. Løs F2L, så kommer oppsettet; utfør det, og casen starter (tiden går fra casen vises).
+Hold kuben med grønn foran og hvit ned og se på skjermen. Casen lages på den virtuelle kuben, og trekkene fra den fysiske kuben brukes på den – den fysiske kuben trenger ikke settes opp eller løses mellom casene. Tiden går fra casen vises.
 
 ## Status (M1)
 
 - FR-spor, de 41 basic-casene i acubemy-nummerering (= solved.no), bokas nummer og side vises.
 - Valgt algoritme = Vegards låste løsning der den finnes, ellers bokas (`src/cases.js`, samme som `analyse/f2l.py` i det private repoet).
-- Drill og guidet modus, oppsett med blandet siste lag (eller kort oppsett), statistikk for økta.
+- Drill og guidet modus, virtuelle caser (siste lag blandes), «Prøv igjen» / «Neste case», 3D-kube med animasjon og gyro, statistikk for økta.
 - Lagres ikke ennå (sandkassen blokkerer localStorage); kommer i M2 via egen tjeneste.
 
 ## Kode

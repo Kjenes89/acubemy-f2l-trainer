@@ -4,7 +4,7 @@ import { CASES, CASE_BY_N, DEFAULT_SELECTION, LL_SCRAMBLERS } from "./cases.js";
 import { cubeSvg } from "./view.js";
 
 let view3d = null;
-const dimNow = () => S.phase === "case";
+const dimNow = () => true;
 
 const $ = (id) => document.getElementById(id);
 const embedded = window.parent !== window;
@@ -12,14 +12,11 @@ const rnd = (n) => Math.floor(Math.random() * n);
 const fmt = (ms) => (ms / 1000).toFixed(2);
 
 const S = {
-  facelets: SOLVED,
-  history: [],
-  diag: {},
-  synced: false, // våre siste tilstander; en tilstand fra acubemy som finnes her er gammel og ignoreres
+  facelets: SOLVED, // den VIRTUELLE kuben: casen lages her, og trekkene fra den fysiske kuben brukes på den
   mode: "drill", // drill | guided
-  shortSetup: false,
+  mixLL: true,
   selection: new Set(DEFAULT_SELECTION),
-  phase: "wait", // wait (venter på løst F2L) | setup | case
+  phase: "idle", // idle (ingen caser valgt) | case | pause (kort pause mellom caser)
   cur: null,
   last: null,
   repeat: null,
@@ -65,30 +62,26 @@ function pickCase() {
   return CASE_BY_N[n];
 }
 
-function startSetup() {
-  const c = pickCase();
-  if (!c) { S.phase = "wait"; render(); return; }
-  const alg = expand(c.alg);
-  const pre = [];
-  if (!S.shortSetup) {
-    pre.push(...expand(LL_SCRAMBLERS[rnd(LL_SCRAMBLERS.length)]).moves);
-    pre.push({ face: "D", amt: rnd(4) });
+// Ny case rett på den virtuelle kuben – den fysiske kuben trenger ikke settes opp.
+function startCase(sameAgain = false) {
+  const c = sameAgain && S.cur ? S.cur.c : pickCase();
+  if (!c) { S.phase = "idle"; S.cur = null; render(); return; }
+  let cur;
+  if (sameAgain && S.cur) {
+    cur = { ...S.cur };
+  } else {
+    const alg = expand(c.alg);
+    const pre = S.mixLL ? [...expand(LL_SCRAMBLERS[rnd(LL_SCRAMBLERS.length)]).moves, { face: "D", amt: rnd(4) }] : [];
+    const auf = rnd(4);
+    const start = simplify([...pre, ...invert(alg.moves), { face: "D", amt: auf }]);
+    cur = { c, alg, auf: (4 - auf) % 4, startState: start };
   }
-  const auf = rnd(4);
-  const setup = simplify([...pre, ...invert(alg.moves), { face: "D", amt: auf }]);
-  S.cur = { c, alg, auf: (4 - auf) % 4, setupText: setup.map(heldNotation), setup: new Tracker(setup), executed: [], setupDone: 0 };
-  S.phase = "setup";
-  render();
-}
-
-function startCase() {
-  const cur = S.cur;
+  S.facelets = simplify(cur.startState).reduce((st, m) => turn(st, m.face, m.amt), SOLVED);
   const { items, skippedTok } = withPreAuf(cur.auf, cur.alg.moves);
-  cur.guide = new Tracker(items);
-  cur.skippedTok = skippedTok;
-  cur.t0 = performance.now();
-  cur.firstMove = null;
+  Object.assign(cur, { guide: new Tracker(items), skippedTok, executed: [], t0: performance.now(), firstMove: null });
+  S.cur = cur;
   S.phase = "case";
+  if (view3d) view3d.set(S.facelets, dimNow());
   render();
   tick();
 }
@@ -112,31 +105,22 @@ function finishCase() {
   if (ok) { st.ok++; if (!res.guided) st.times.push(t); }
   S.last = res;
   S.repeat = ok ? null : cur.c.n;
-  startSetup();
+  // Kort pause så siste trekk rekker å vises; trekk i pausen ignoreres.
+  S.phase = "pause";
+  render();
+  setTimeout(() => startCase(), 350);
 }
 
 // ---------- trekk inn ----------
 function onMove(face, a, ts) {
-  S.history.push(S.facelets);
-  if (S.history.length > 12) S.history.shift();
+  if (S.phase !== "case") return;
+  const cur = S.cur;
   S.facelets = turn(S.facelets, face, a);
   if (view3d) view3d.move(face, a, S.facelets, dimNow());
-  if (S.phase === "wait") {
-    if (f2lSolved(S.facelets)) startSetup(); else render();
-    return;
-  }
-  if (S.phase === "setup") {
-    S.cur.setup.step(face, a);
-    if (S.cur.setup.done) startCase(); else render();
-    return;
-  }
-  if (S.phase === "case") {
-    const cur = S.cur;
-    if (cur.firstMove == null) cur.firstMove = performance.now();
-    cur.executed.push({ face, amt: a });
-    cur.guide.step(face, a);
-    if (f2lSolved(S.facelets)) finishCase(); else render();
-  }
+  if (cur.firstMove == null) cur.firstMove = performance.now();
+  cur.executed.push({ face, amt: a });
+  cur.guide.step(face, a);
+  if (f2lSolved(S.facelets)) finishCase(); else render();
 }
 
 // ---------- visning ----------
@@ -149,18 +133,6 @@ function tick() {
 
 function chips(list, cls = "") {
   return list.map((t) => `<span class="mv ${cls}">${t}</span>`).join("");
-}
-
-function setupHtml(cur) {
-  const it = cur.setup.items;
-  if (cur.setup.correcting) {
-    const fixes = [];
-    for (const m of it) { if (!m.corr) break; fixes.push(heldNotation(m)); }
-    return `<div class="fix">Feil trekk – angre: ${chips(fixes, "bad")}</div>`;
-  }
-  const remaining = it.map(heldNotation);
-  const doneN = Math.max(0, cur.setupText.length - remaining.length);
-  return `<div class="scr">${chips(cur.setupText.slice(0, doneN), "done")}${remaining.length ? `<span class="mv now">${remaining[0]}</span>` : ""}${chips(remaining.slice(1))}</div>`;
 }
 
 function algHtml(cur, guided) {
@@ -219,17 +191,13 @@ function statsHtml() {
 function render() {
   const cur = S.cur;
   let main = "";
-  if (S.phase === "wait") {
-    main = S.selection.size
-      ? `<div class="big">Løs F2L (siste lag kan stå uløst), hold hvit ned og grønn foran.</div>`
-      : `<div class="big">Velg minst én case.</div>`;
-  } else if (S.phase === "setup") {
-    main = `<div class="label">Oppsett</div>${setupHtml(cur)}`;
-  } else if (S.phase === "case") {
+  if (S.phase === "idle") {
+    main = `<div class="big">Velg minst én case.</div>`;
+  } else if (S.phase === "case" || S.phase === "pause") {
     const guided = S.mode === "guided";
     main = `<div class="caseinfo"><b>${cur.c.n}</b> <span class="muted">bok ${cur.c.bookNo} · s. ${cur.c.bookPage} · ${cur.c.source}</span></div>
       ${view3d ? "" : `<div class="cube">${cubeSvg(S.facelets)}</div>`}
-      <div id="timer" class="timer">0.00</div>
+      <div id="timer" class="timer">${S.phase === "pause" && S.last ? fmt(S.last.time) : "0.00"}</div>
       ${algHtml(cur, guided)}`;
   }
   $("phase").innerHTML = main;
@@ -249,31 +217,20 @@ function renderPicker() {
 // ---------- oppkobling ----------
 function bind() {
   document.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => { S.mode = b.dataset.mode; render(); }));
-  $("short").addEventListener("change", (e) => { S.shortSetup = e.target.checked; });
+  $("mixll").addEventListener("change", (e) => { S.mixLL = e.target.checked; });
   $("toggle-picker").addEventListener("click", () => { $("picker-wrap").hidden = !$("picker-wrap").hidden; renderPicker(); });
   $("picker").addEventListener("click", (e) => {
     const b = e.target.closest(".case"); if (!b) return;
     const n = +b.dataset.n;
     S.selection.has(n) ? S.selection.delete(n) : S.selection.add(n);
-    renderPicker(); render();
+    renderPicker(); if (S.phase === "idle") startCase(); else render();
   });
-  $("sel-all").addEventListener("click", () => { CASES.forEach((c) => S.selection.add(c.n)); renderPicker(); render(); });
+  $("sel-all").addEventListener("click", () => { CASES.forEach((c) => S.selection.add(c.n)); renderPicker(); if (S.phase === "idle") startCase(); else render(); });
   $("sel-none").addEventListener("click", () => { S.selection.clear(); renderPicker(); render(); });
-  $("sel-asker").addEventListener("click", () => { S.selection = new Set(DEFAULT_SELECTION); renderPicker(); render(); });
-  $("sync").addEventListener("click", () => {
-    if (!window.acubemy) return;
-    S.phase = "wait"; S.cur = null; S.repeat = null;
-    adopt(acubemy.getFacelets());
-  });
+  $("sel-asker").addEventListener("click", () => { S.selection = new Set(DEFAULT_SELECTION); renderPicker(); if (S.phase === "idle") startCase(); else render(); });
   $("calib").addEventListener("click", () => { if (window.acubemy) acubemy.calibrateGyro(); });
-  $("skip").addEventListener("click", () => { S.repeat = null; S.phase = "wait"; S.cur = null; if (f2lSolved(S.facelets)) startSetup(); else render(); });
-}
-
-function adopt(f) {
-  S.facelets = f;
-  S.history = [];
-  if (view3d) view3d.set(f, dimNow());
-  if (S.phase === "wait" && f2lSolved(f)) startSetup(); else render();
+  $("skip").addEventListener("click", () => { S.repeat = null; startCase(); });
+  $("retry").addEventListener("click", () => { if (S.cur) startCase(true); });
 }
 
 async function boot() {
@@ -291,26 +248,13 @@ async function boot() {
       $("device").textContent = d.connected ? d.deviceName || "Kube tilkoblet" : "Ingen kube – koble til i acubemy";
       $("device").className = d.connected ? "ok" : "warn";
     });
-    acubemy.onStateChange((f) => {
-      // Pluginen følger trekkene selv; acubemys tilstand kan ligge etter trekkene og overstyrer
-      // aldri mens du dreier. Den brukes ved oppstart og med «Synk med kuben». Vi teller hva som kommer,
-      // så vi kan se hvordan acubemy oppfører seg.
-      if (!f || f.length !== 54) return;
-      if (!S.synced) { adopt(f); S.synced = true; return; }
-      const back = S.history.lastIndexOf(f);
-      const k = f === S.facelets ? "lik" : back >= 0 ? `${S.history.length - back} bak` : "ukjent";
-      S.diag[k] = (S.diag[k] || 0) + 1;
-      $("diag").textContent = "acubemy-tilstand: " + Object.entries(S.diag).map(([a, b]) => `${a} ${b}`).join(" · ");
-    });
     acubemy.onGyro((q) => { if (view3d) view3d.setGyro(q); });
     acubemy.onMove(({ face, prime, timestamp }) => onMove(face, prime ? 3 : 1, timestamp));
-    if (embedded && acubemy.getDevice().connected) { adopt(acubemy.getFacelets()); S.synced = true; }
   }
-  if (!embedded) S.synced = true;
   if (!embedded) $("device").textContent = "Utenfor acubemy: tastene U R F D L B (Shift = mot klokka) simulerer kuben i kubens egen ramme";
   window.__sim = (mv) => { const f = mv[0]; const a = mv.includes("2") ? 2 : mv.includes("'") ? 3 : 1; for (let i = 0; i < (a === 2 ? 2 : 1); i++) onMove(f, a === 2 ? 1 : a, performance.now()); };
   window.__state = S;
-  if (f2lSolved(S.facelets)) startSetup(); else render();
+  startCase();
 }
 
 boot();

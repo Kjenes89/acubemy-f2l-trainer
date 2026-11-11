@@ -3,8 +3,8 @@
   "id": "vegard-f2l-trainer",
   "name": "F2L-trener (Vegard)",
   "author": "Vegard",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "F2L-drill der bare den valgte algoritmen per case teller, med guiding trekk for trekk.",
   "entry": "index.html",
-  "permissions": ["moves", "gyro", "state"]
+  "permissions": ["moves", "gyro"]
 }
