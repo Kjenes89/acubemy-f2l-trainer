@@ -1,0 +1,8 @@
+{
+  "date": "2026-11-12",
+  "title": "Eksempel – erstattes av Claude når en økt planlegges",
+  "blocks": [
+    { "id": "f2l-asker-drill", "trainer": "f2l", "name": "Asker-casene, drill", "cases": [7, 8, 9, 16, 33], "minutes": 8, "mode": "drill" },
+    { "id": "f2l-8-9-guidet", "trainer": "f2l", "name": "8 og 9, guidet", "cases": [8, 9], "minutes": 4, "mode": "guided" }
+  ]
+}

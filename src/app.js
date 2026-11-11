@@ -2,6 +2,7 @@ import { SOLVED, OPPOSITE, turn, f2lSolved } from "./cube.js";
 import { expand, invert, simplify, canonical, heldNotation, gripNotation, sameGrip, yNeeded, START_GRIP } from "./alg.js";
 import { CASES, CASE_BY_N, DEFAULT_SELECTION, LL_SCRAMBLERS } from "./cases.js";
 import { cubeSvg } from "./view.js";
+import { log, flush, onStatus } from "./log.js";
 
 let view3d = null;
 const dimNow = () => true;
@@ -31,6 +32,9 @@ const S = {
   attempts: { n: null, count: 0 },
   stats: {}, // per case: { reps, ok, exec: [], rec: [] } – exec/rec bare for drill med valgt løsning
   resultRecent: [],
+  plan: null, // fra plans/plan.json i repoet (Claude legger inn dagens blokker)
+  block: null, // { id, name, end, minutes } når en planblokk kjører
+  blocksDone: new Set(),
 };
 
 // ---------- sporing av forventet trekkrekke ----------
@@ -74,8 +78,9 @@ function pickCase() {
 
 // Ny case rett på den virtuelle kuben – den fysiske kuben trenger ikke settes opp.
 function startCase(sameAgain = false) {
-  const c = sameAgain && S.cur ? S.cur.c : pickCase();
   hideOverlay();
+  if (S.block && performance.now() >= S.block.end) { endBlock(); return; }
+  const c = sameAgain && S.cur ? S.cur.c : pickCase();
   if (!c) { S.phase = "idle"; S.cur = null; render(); return; }
   let cur;
   if (sameAgain && S.cur) {
@@ -126,6 +131,11 @@ function finishCase() {
     median: median(st.exec), prevMedian, attempts: S.attempts.count,
     did: didInYourGrip(cur.executed),
   };
+  log({
+    block: S.block ? S.block.id : null, trainer: "f2l", case: cur.c.n, slot: "FR", mode: S.mode,
+    ok, fixed, rec: Math.round(rec), exec: Math.round(exec), tps: +S.last.tps.toFixed(2),
+    did: S.last.did, alg: cur.c.alg, source: cur.c.source, auf: cur.aufAmt, colorShift: cur.colorShift || 0,
+  });
   S.repeat = ok ? null : cur.c.n;
   if (guided) S.repeat = cur.c.n; // guidet: samme case til du går ut av guidet
   if (guided) {
@@ -140,6 +150,84 @@ function finishCase() {
   S.resultRecent = [];
   render();
   showOverlay();
+}
+
+// ---------- plan: blokker med nedtelling ----------
+async function loadPlan() {
+  try {
+    const r = await fetch("plans/plan.json", { cache: "no-store" });
+    if (r.ok) S.plan = await r.json();
+  } catch (e) { S.plan = null; }
+  renderPlan();
+}
+
+function renderPlan() {
+  const blocks = (S.plan && S.plan.blocks || []).filter((b) => b.trainer === "f2l");
+  const el = $("planbar");
+  if (!blocks.length) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `<span class="muted small">${S.plan.title || "Plan"} · ${S.plan.date || ""}</span>` + blocks.map((b) =>
+    `<button class="blk ${S.block && S.block.id === b.id ? "on" : ""} ${S.blocksDone.has(b.id) ? "done" : ""}" data-block="${b.id}">
+      <b>${b.name}</b><span>${b.minutes} min · ${b.mode === "guided" ? "guidet" : "drill"} · ${b.cases.join(", ")}</span></button>`).join("") +
+    (S.block ? `<span id="blocktimer" class="blocktimer"></span><button id="stopblock">Avslutt blokk</button>` : "");
+}
+
+function startBlock(id) {
+  const b = S.plan.blocks.find((x) => x.id === id);
+  if (!b) return;
+  beep(0); // lås opp lyd (krever klikk i rammen)
+  S.selection = new Set(b.cases);
+  S.mode = b.mode === "guided" ? "guided" : "drill";
+  S.repeat = null;
+  S.block = { id: b.id, name: b.name, minutes: b.minutes, end: performance.now() + b.minutes * 60000 };
+  log({ event: "block-start", block: b.id, minutes: b.minutes, cases: b.cases, mode: S.mode });
+  renderPlan();
+  startCase();
+  blockTick();
+}
+
+function blockTick() {
+  if (!S.block) return;
+  const left = S.block.end - performance.now();
+  const el = $("blocktimer");
+  if (el) el.textContent = left > 0 ? `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, "0")}` : "0:00";
+  // Tiden ute: blokken avsluttes når casen du står i er ferdig (eller med en gang hvis du ikke har startet den).
+  if (left <= 0 && !S.block.warned) {
+    S.block.warned = true;
+    beep(3);
+    flash("Tiden er ute");
+    if (S.phase === "result" || (S.phase === "case" && S.cur && S.cur.execStart == null)) endBlock();
+  }
+  setTimeout(blockTick, 250);
+}
+
+function endBlock() {
+  if (!S.block) return;
+  log({ event: "block-end", block: S.block.id });
+  flush();
+  S.blocksDone.add(S.block.id);
+  const name = S.block.name;
+  S.block = null;
+  S.phase = "idle"; S.cur = null;
+  hideOverlay();
+  render();
+  renderPlan();
+  $("phase").innerHTML = `<div class="big">«${name}» ferdig. Velg neste blokk.</div>`;
+}
+
+let audio = null;
+function beep(times) {
+  try {
+    audio ||= new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === "suspended") audio.resume();
+    for (let i = 0; i < times; i++) {
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.frequency.value = 880; o.connect(g); g.connect(audio.destination);
+      const t = audio.currentTime + i * 0.35;
+      g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+      o.start(t); o.stop(t + 0.26);
+    }
+  } catch (e) { /* lyd ikke tilgjengelig */ }
 }
 
 // ---------- snarveier ----------
@@ -443,6 +531,11 @@ function bind() {
   $("sel-all").addEventListener("click", () => { CASES.forEach((c) => S.selection.add(c.n)); renderPicker(); if (S.phase === "idle") startCase(); else render(); });
   $("sel-none").addEventListener("click", () => { S.selection.clear(); renderPicker(); render(); });
   $("sel-asker").addEventListener("click", () => { S.selection = new Set(DEFAULT_SELECTION); renderPicker(); if (S.phase === "idle") startCase(); else render(); });
+  $("planbar").addEventListener("click", (e) => {
+    if (e.target.closest("#stopblock")) { endBlock(); return; }
+    const b = e.target.closest("[data-block]"); if (b) startBlock(b.dataset.block);
+  });
+  onStatus((st, n) => { $("logstatus").textContent = `Logg: ${st}${n ? ` (${n} venter)` : ""}`; });
   $("calib").addEventListener("click", () => { if (window.acubemy) acubemy.calibrateGyro(); });
   $("skip").addEventListener("click", () => { S.repeat = null; startCase(); });
   $("retry").addEventListener("click", () => { if (S.cur) startCase(true); });
@@ -480,6 +573,7 @@ async function boot() {
   if (!embedded) $("device").textContent = "Utenfor acubemy: tastene U R F D L B (Shift = mot klokka) simulerer kuben i kubens egen ramme";
   window.__sim = (mv) => { const f = mv[0]; const a = mv.includes("2") ? 2 : mv.includes("'") ? 3 : 1; for (let i = 0; i < (a === 2 ? 2 : 1); i++) onMove(f, a === 2 ? 1 : a); };
   window.__state = S;
+  loadPlan();
   startCase();
 }
 
