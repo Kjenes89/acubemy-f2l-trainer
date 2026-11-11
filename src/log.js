@@ -30,7 +30,7 @@ export async function flush() {
       body: JSON.stringify({ records: batch }),
       keepalive: true,
     });
-    if (!r.ok) throw new Error("HTTP " + r.status);
+    if (!r.ok) { let m = ""; try { m = (await r.json()).error || ""; } catch {} throw new Error("HTTP " + r.status + (m ? " – " + m : "")); }
     buffer = buffer.slice(batch.length);
     setStatus("lagret");
   } catch (e) {
