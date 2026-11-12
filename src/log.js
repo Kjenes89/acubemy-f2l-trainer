@@ -15,6 +15,7 @@ function setStatus(s) { status = s; listeners.forEach((fn) => fn(status, buffer.
 
 export function log(rec) {
   buffer.push({ ...rec, session: SESSION, t: new Date().toISOString() });
+  if (buffer.length > 2000) buffer = buffer.slice(-2000); // ved langvarig sendefeil: behold de nyeste
   setStatus(status);
   if (buffer.length >= 10) flush();
 }

@@ -1,8 +1,9 @@
-import { SOLVED, OPPOSITE, turn, f2lSolved } from "./cube.js";
-import { expand, invert, simplify, canonical, heldNotation, gripNotation, sameGrip, yNeeded, START_GRIP } from "./alg.js";
+import { SOLVED, turn, f2lSolved } from "./cube.js";
+import { expand, invert, simplify, heldNotation, gripNotation, yNeeded, START_GRIP } from "./alg.js";
 import { CASES, CASE_BY_N, DEFAULT_SELECTION, LL_SCRAMBLERS } from "./cases.js";
 import { cubeSvg } from "./view.js";
 import { log, flush, onStatus, LOG_URL } from "./log.js";
+import { Tracker, withPreAuf, sameSolution, didInYourGrip } from "./solve.js";
 
 let view3d = null;
 const dimNow = () => true;
@@ -46,35 +47,6 @@ const S = {
   block: null, // { id, name, end, minutes } når en planblokk kjører
   blocksDone: new Set(),
 };
-
-// ---------- sporing av forventet trekkrekke ----------
-class Tracker {
-  constructor(items) { this.items = items.map((m) => ({ ...m })); }
-  get correcting() { return this.items.length > 0 && this.items[0].corr; }
-  step(face, a, grip = null) {
-    const it = this.items;
-    let i = 0;
-    const wrongGrip = (m) => grip && m && !m.corr && !m.auf && m.grip && !sameGrip(grip, m.grip);
-    if (it[0] && it[0].face !== face && it[1] && OPPOSITE[it[0].face] === it[1].face && it[1].face === face && !it[0].corr) i = 1;
-    if (it[i] && it[i].face === face && !wrongGrip(it[i])) {
-      it[i].amt = (it[i].amt - a + 4) % 4;
-      if (!it[i].amt) it.splice(i, 1);
-      return true;
-    }
-    it.unshift({ face, amt: (4 - a) % 4, corr: true });
-    return false;
-  }
-}
-
-// Casens AUF = tilfeldig AUF slått sammen med U-trekkene algoritmen starter med (bokas «U2» o.l.).
-function withPreAuf(aufAmt, algMoves) {
-  const moves = algMoves.map((m) => ({ ...m }));
-  let amt = aufAmt;
-  const hidden = new Set();
-  while (moves.length && moves[0].face === "D") { amt += moves[0].amt; hidden.add(moves[0].tok); moves.shift(); }
-  amt %= 4;
-  return { items: amt ? [{ face: "D", amt, tok: -1, auf: true }, ...moves] : moves, hidden, aufAmt: amt };
-}
 
 // ---------- casevalg ----------
 // Hvor svak er en case? Median gjenkjenning + utførelse (økta, ellers loggen), straffet for avviste forsøk.
@@ -175,6 +147,16 @@ function pickCase() {
   return CASE_BY_N[choices[rnd(choices.length)]];
 }
 
+const MODE_NAME = { drill: "Drill", learn: "Learn", recap: "Recap", weighted: "Weighted", rad: "På rad", recog: "Gjenkjenning", predict: "Predict", guided: "Guidet" };
+// Bytt treningsmodus (ikke guidet – det er et hjelpemiddel oppå modusen, se toggleGuided).
+function setMode(m, { start = true } = {}) {
+  S.mode = S.baseMode = m; S.repeat = null;
+  if (m === "rad") buildRadQueue();
+  if (m === "learn") learnInit();
+  if (m === "recap") buildRecap();
+  if (start) startCase();
+}
+
 // Ett skritt videre i «på rad»-køen (etter n riktige, eller ved «neste case»).
 function radAdvance(reason) {
   S.rad.idx++; S.rad.streak = 0;
@@ -188,16 +170,18 @@ function radAdvance(reason) {
 // Ny case rett på den virtuelle kuben – den fysiske kuben trenger ikke settes opp.
 function startCase(sameAgain = false) {
   hideOverlay();
-  if (S.mode === "predict") { newPredictRound(); return; }
   if (S.block && (performance.now() >= S.block.end || S.block.roundDone)) { endBlock(); return; }
+  if (S.mode === "predict") { newPredictRound(); return; }
   const c = sameAgain && S.cur ? S.cur.c : pickCase();
   if (!c) {
+    const recapDone = S.mode === "recap" && S.recap.queue.length;
+    if (recapDone && S.block) { endBlock(); return; }
     S.phase = "idle"; S.cur = null; render();
-    if (S.mode === "recap" && S.recap.queue.length) recapSummary();
+    if (recapDone) recapSummary();
     return;
   }
   let cur;
-  if (sameAgain && S.cur) {
+  if (sameAgain && S.cur && S.cur.startState) {
     cur = { c: S.cur.c, alg: S.cur.alg, auf: S.cur.auf, startState: S.cur.startState, colorShift: S.cur.colorShift };
   } else {
     const alg = expand(c.alg);
@@ -259,8 +243,7 @@ function finishCase() {
   }
   if (S.mode === "recap") {
     if (ok) (S.recap.times[cur.c.n] ||= []).push(rec + exec);
-    S.recap.idx++; // også avvist teller som gjennomgått; casen gjentas uansett straks (repeat)
-    if (!ok) { S.recap.idx--; }
+    if (ok) S.recap.idx++; // avvist: casen gjentas (S.repeat) før køen går videre
   }
   if (S.mode === "rad") {
     if (ok) { S.rad.streak++; if (S.rad.streak >= S.rad.n) radAdvance("done"); }
@@ -320,7 +303,9 @@ function renderPlan() {
 }
 
 function blockDesc(b) {
-  const what = b.mode === "rad" ? `${b.n || 3} på rad${b.order === "weakest" || !b.order ? ", svakeste først" : b.order === "random" ? ", tilfeldig" : ""}` : "drill";
+  const mode = MODE_NAME[b.mode] ? b.mode : "drill";
+  const what = mode === "rad" ? `${b.n || 3} på rad${b.order === "weakest" || !b.order ? ", svakeste først" : b.order === "random" ? ", tilfeldig" : ""}`
+    : mode === "recap" ? `recap ${b.repeat || 2}×` : MODE_NAME[mode].toLowerCase();
   return `${b.minutes ? b.minutes + " min · " : "én runde · "}${what} · ${b.cases.join(", ")}`;
 }
 
@@ -329,10 +314,15 @@ function startBlock(id) {
   if (!b) return;
   beep(0); // lås opp lyd (krever klikk i rammen)
   S.selection = new Set(b.cases);
-  S.mode = S.baseMode = b.mode === "rad" ? "rad" : "drill";
-  S.repeat = null;
-  if (S.mode === "rad") { S.rad.n = b.n || 3; S.rad.order = b.order || "weakest"; buildRadQueue(); }
-  S.block = { id: b.id, name: b.name, minutes: b.minutes, untilRound: !b.minutes, end: b.minutes ? performance.now() + b.minutes * 60000 : Infinity };
+  // Blokktyper: drill | weighted | learn | recog | predict (krever minutes), rad | recap (minutes eller én runde).
+  const mode = MODE_NAME[b.mode] && b.mode !== "guided" ? b.mode : "drill";
+  const oneRound = !b.minutes && (mode === "rad" || mode === "recap");
+  const minutes = b.minutes || (oneRound ? 0 : 5);
+  if (mode === "rad") { S.rad.n = b.n || 3; S.rad.order = b.order || "weakest"; }
+  if (mode === "recap") { S.recap.repeat = b.repeat || 2; S.recap.instant = !!b.instant; S.recap.order = b.order || "random"; }
+  if (mode === "learn") { S.learn.threshold = b.threshold || S.learn.threshold; }
+  setMode(mode, { start: false });
+  S.block = { id: b.id, name: b.name, minutes, untilRound: oneRound, end: minutes ? performance.now() + minutes * 60000 : Infinity };
   log({ event: "block-start", block: b.id, minutes: b.minutes, cases: b.cases, mode: S.mode });
   renderPlan();
   startCase();
@@ -343,15 +333,17 @@ function blockTick() {
   if (!S.block) return;
   const left = S.block.end - performance.now();
   const el = $("blocktimer");
-  if (el) el.textContent = !isFinite(left) ? `${Math.min(S.rad.idx + 1, S.rad.queue.length)}/${S.rad.queue.length}` : left > 0 ? `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, "0")}` : "0:00";
+  const q = S.mode === "recap" || (S.mode === "guided" && S.baseMode === "recap") ? S.recap : S.rad;
+  if (el) el.textContent = !isFinite(left) ? `${Math.min(q.idx + 1, q.queue.length)}/${q.queue.length}` : left > 0 ? `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, "0")}` : "0:00";
   // Tiden ute: blokken avsluttes når casen du står i er ferdig (eller med en gang hvis du ikke har startet den).
   if (left <= 0 && !S.block.warned) {
     S.block.warned = true;
     beep(3);
     flash("Tiden er ute");
-    if (S.phase === "result" || (S.phase === "case" && S.cur && S.cur.execStart == null)) endBlock();
+    if (S.phase === "result" || S.phase === "predict" || S.phase === "idle" || (S.phase === "case" && S.cur && S.cur.execStart == null)) endBlock();
   }
-  setTimeout(blockTick, 250);
+  clearTimeout(blockTick.t);
+  blockTick.t = setTimeout(blockTick, 250);
 }
 
 function endBlock() {
@@ -391,7 +383,13 @@ function recogMove(face, a, now) {
   const cur = S.cur;
   S.facelets = turn(S.facelets, face, a);
   if (view3d) view3d.move(face, a, S.facelets, dimNow());
-  if (face === "D") { cur.netAuf = ((cur.netAuf || 0) + a) % 4; render(); return; }
+  if (face === "D") {
+    cur.netAuf = ((cur.netAuf || 0) + a) % 4;
+    cur.recent.push({ face, a, t: now });
+    if (cur.recent.length > 4) cur.recent.shift();
+    if (fourInRow(cur.recent, face, a, now)) { if (window.acubemy) acubemy.calibrateGyro(); cur.recent = []; flash("Gyro kalibrert"); }
+    render(); return;
+  }
   const ok = (cur.netAuf || 0) === cur.aufAmt;
   const t = now - cur.t0;
   const R = S.recog;
@@ -480,7 +478,7 @@ function fourInRow(list, face, a, now) {
 function toggleGuided() {
   if (S.mode === "guided") {
     S.mode = S.baseMode; S.repeat = null;
-    flash({ rad: "På rad", learn: "Learn", recap: "Recap", weighted: "Weighted" }[S.mode] || "Drill");
+    flash(MODE_NAME[S.mode]);
     if (S.mode === "rad") {
       if (!S.rad.queue.length) buildRadQueue();
       const i = S.cur ? S.rad.queue.indexOf(S.cur.c.n) : -1; // fortsett i køen der casen du øvde på står
@@ -504,7 +502,12 @@ function shortcut(kind) {
     render();
   } else if (kind === "retry") { flash("Samme case igjen"); startCase(true); }
   else if (kind === "guided") toggleGuided();
-  else if (kind === "next") { S.repeat = null; if (S.mode === "rad") radAdvance("skip"); else flash("Neste case"); startCase(); }
+  else if (kind === "next") {
+    S.repeat = null;
+    if (S.mode === "rad") radAdvance("skip");
+    else { if (S.mode === "recap") S.recap.idx++; flash("Neste case"); }
+    startCase();
+  }
 }
 
 function flash(text) {
@@ -554,11 +557,17 @@ function onMove(face, a) {
 }
 
 // ---------- visning ----------
+let ticking = false;
 function tick() {
-  if (S.phase !== "case") return;
-  const el = $("timer");
-  if (el) el.textContent = S.cur.execStart != null ? fmt(performance.now() - S.cur.execStart) : "0.00";
-  requestAnimationFrame(tick);
+  if (ticking) return;
+  ticking = true;
+  const loop = () => {
+    if (S.phase !== "case" || !S.cur) { ticking = false; return; }
+    const el = $("timer");
+    if (el) el.textContent = S.cur.execStart != null ? fmt(performance.now() - S.cur.execStart) : "0.00";
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
 }
 
 const chips = (list, cls = "") => list.map((t) => `<span class="mv ${cls}">${t}</span>`).join("");
@@ -638,48 +647,6 @@ function caseCard(cur) {
     <div class="muted small">FR-spor · bok ${cur.c.bookNo}, s. ${cur.c.bookPage} · ${cur.c.source}</div>
     <div class="gc-alg">${cur.c.alg}</div>
     <div class="gc-stats"><div><span class="muted small">Beste (drill)</span><b>${best}</b></div><div><span class="muted small">Median</span><b>${med}</b></div></div>`;
-}
-
-// Trekk med grep: like flater på rad i samme grep slås sammen, U-trekk først og sist (AUF) tas bort.
-function withGrips(moves) {
-  const out = [];
-  for (const m of moves) {
-    const grips = m.grips || (m.grip ? [m.grip] : []);
-    const last = out[out.length - 1];
-    if (last && last.face === m.face && (!grips.length || last.grips.some((g) => grips.some((h) => sameGrip(g, h))))) {
-      last.amt = (last.amt + m.amt) % 4;
-      if (!last.amt) out.pop();
-    } else if (m.amt % 4) out.push({ face: m.face, amt: m.amt % 4, grips });
-  }
-  while (out.length && out[0].face === "D") out.shift();
-  while (out.length && out[out.length - 1].face === "D") out.pop();
-  return out;
-}
-
-// Samme løsning som algoritmen? Samme trekk, og – når gyroen gir grep – hvert trekk tatt i samme grep
-// som algoritmen forutsetter. F' U' F godtas altså ikke for y' R' U' R.
-function sameSolution(executed, algMoves) {
-  if (canonical(executed) !== canonical(algMoves)) return false;
-  const a = withGrips(executed), b = withGrips(algMoves);
-  return a.length === b.length && a.every((m, i) => m.face === b[i].face && m.amt === b[i].amt && m.grips.some((g) => sameGrip(g, b[i].grips[0])));
-}
-
-// Det du gjorde, skrevet slik du holdt kuben (grep fra gyroen ved hvert trekk), med rotasjonene du tok.
-function didInYourGrip(executed) {
-  const out = [];
-  let grip = START_GRIP;
-  for (const m of executed) {
-    if (m.grip && !sameGrip(m.grip, grip)) {
-      const r = yNeeded(grip, m.grip);
-      out.push({ rot: r == null ? "(rotert)" : r });
-      grip = m.grip;
-    }
-    const f = Object.keys(grip).find((k) => grip[k] === m.face);
-    const last = out[out.length - 1];
-    if (last && last.face === f) { last.amt = (last.amt + m.amt) % 4; if (!last.amt) out.pop(); }
-    else out.push({ face: f, amt: m.amt });
-  }
-  return out.map((t) => t.rot ?? t.face + (t.amt === 2 ? "2" : t.amt === 3 ? "'" : "")).join(" ");
 }
 
 // ---------- resultatvindu ----------
@@ -822,12 +789,7 @@ function bind() {
   document.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => {
     const m = b.dataset.mode;
     if (m === S.mode) return;
-    if (m === "guided" || S.mode === "guided") { if (m !== "guided") S.baseMode = m; toggleGuided(); return; }
-    S.mode = S.baseMode = m; S.repeat = null;
-    if (m === "rad") buildRadQueue();
-    if (m === "learn") learnInit();
-    if (m === "recap") buildRecap();
-    startCase();
+    if (m === "guided") toggleGuided(); else setMode(m);
   }));
   const num = (id, fn) => $(id).addEventListener("change", (e) => { fn(e.target.type === "checkbox" ? e.target.checked : e.target.value); render(); });
   num("learn-th", (v) => { S.learn.threshold = +v; learnInit(); });
@@ -896,8 +858,8 @@ async function boot() {
   window.__sim = (mv) => { const f = mv[0]; const a = mv.includes("2") ? 2 : mv.includes("'") ? 3 : 1; for (let i = 0; i < (a === 2 ? 2 : 1); i++) onMove(f, a === 2 ? 1 : a); };
   window.__state = S;
   loadPlan();
-  await loadHist();
   startCase();
+  loadHist().then(() => { if (S.phase !== "idle") render(); }); // medianene kommer når loggen er lest
 }
 
 boot();
