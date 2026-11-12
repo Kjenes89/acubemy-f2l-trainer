@@ -790,6 +790,15 @@ function slowMove(face, a, now) {
   W.lastGrip = mv.grip;
   mv.grips = [mv.grip];
   setTimeout(() => { const g = liveGrip(); if (g) mv.grips.push(g); }, 120);
+  // Gul U4 (hvit ned) = kalibrer gyro i alle faser. I solve-fasen gjøres det lenger ned (trekkene tas også
+  // ut av vurderingen). Andre steder trengs ingen opprydding: fire like trekk opphever hverandre i sporingen.
+  if (W.phase !== "solve") {
+    W.recentAll = [...(W.recentAll || []), { face, a, t: now }].slice(-4);
+    if (face === "D" && fourInRow(W.recentAll, face, a, now)) {
+      if (window.acubemy) acubemy.calibrateGyro();
+      W.recentAll = []; flash("Gyro kalibrert");
+    }
+  }
   if (W.phase === "scramble") {
     W.tracker.step(face, a);
     if (!W.tracker.items.length) {
