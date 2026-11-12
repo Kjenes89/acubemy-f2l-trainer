@@ -2,12 +2,13 @@ import { SOLVED, turn, f2lSolved } from "./cube.js";
 import { expand, invert, simplify, heldNotation, gripNotation, yNeeded, START_GRIP } from "./alg.js";
 import { CASES, CASE_BY_N, DEFAULT_SELECTION, LL_SCRAMBLERS, SLOTS, variant, INTRODUCED } from "./cases.js";
 import { cubeSvg } from "./view.js";
+import * as PLL from "./pll.js";
 import { log, flush, onStatus, LOG_URL } from "./log.js";
 import { Tracker, withPreAuf, sameSolution, didInYourGrip } from "./solve.js";
 import { judgePair, crossSolved, solvedSlots, makeCrossScramble, makeTargetScramble, moveName, heldName, SENSOR_SLOTS } from "./slowsolve.js";
 
 let view3d = null;
-const dimNow = () => S.mode !== "slow"; // slow solve viser hele kuben
+const dimNow = () => S.trainer === "f2l" && S.mode !== "slow"; // slow solve og PLL viser hele kuben
 
 const $ = (id) => document.getElementById(id);
 const embedded = window.parent !== window;
@@ -22,6 +23,7 @@ const RING = ["F", "L", "B", "R"];
 const colorMapFor = (k) => Object.fromEntries(RING.map((c, i) => [c, RING[(i + k) % 4]]));
 
 const S = {
+  trainer: "f2l", // f2l | pll (PLL-treneren ligger i pll.js og bruker samme 3D-kube)
   facelets: SOLVED, // den VIRTUELLE kuben: casen lages her, og trekkene fra den fysiske kuben brukes på den
   // drill (tilfeldig) | learn (én ny case om gangen) | recap (hver case N ganger) | weighted (svake oftere)
   // | rad (N riktige på rad per case) | guided (algoritmen trekk for trekk)
@@ -309,7 +311,7 @@ async function loadPlan() {
 }
 
 function renderPlan() {
-  const blocks = (S.plan && S.plan.blocks || []).filter((b) => b.trainer === "f2l");
+  const blocks = (S.plan && S.plan.blocks || []).filter((b) => b.trainer === "f2l" || b.trainer === "pll");
   const el = $("planbar");
   if (!blocks.length) { el.hidden = true; return; }
   el.hidden = false;
@@ -320,6 +322,8 @@ function renderPlan() {
 }
 
 function blockDesc(b) {
+  if (b.mode === "slow") return `${b.solves ? b.solves + " slow solves" : (b.minutes || 10) + " min slow solve"} · målcase ${b.cases.join(", ")}`;
+  if (b.trainer === "pll") return `PLL · ${b.minutes ? b.minutes + " min · " : "én runde · "}${b.mode === "rad" ? `${b.n || 3} på rad` : b.mode || "drill"} · ${b.cases.join(", ")}`;
   const mode = MODE_NAME[b.mode] ? b.mode : "drill";
   const what = mode === "rad" ? `${b.n || 3} på rad${b.order === "weakest" || !b.order ? ", svakeste først" : b.order === "random" ? ", tilfeldig" : ""}`
     : mode === "recap" ? `recap ${b.repeat || 2}×` : MODE_NAME[mode].toLowerCase();
@@ -329,6 +333,8 @@ function blockDesc(b) {
 function startBlock(id) {
   const b = S.plan.blocks.find((x) => x.id === id);
   if (!b) return;
+  if (b.trainer === "pll") { beep(0); switchTrainer("pll"); PLL.startBlock(b); return; }
+  if (S.trainer !== "f2l") switchTrainer("f2l");
   beep(0); // lås opp lyd (krever klikk i rammen)
   S.selection = new Set(b.cases);
   S.slots = new Set((b.slots || ["FR"]).filter((sl) => SLOTS.includes(sl)));
@@ -342,6 +348,7 @@ function startBlock(id) {
   if (mode === "learn") { S.learn.threshold = b.threshold || S.learn.threshold; }
   setMode(mode, { start: false });
   S.block = { id: b.id, name: b.name, minutes, untilRound: oneRound, end: minutes ? performance.now() + minutes * 60000 : Infinity };
+  if (mode === "slow") { S.block.solves = b.solves || null; S.block.doneSolves = 0; if (b.solves && !b.minutes) S.block.end = Infinity; }
   log({ event: "block-start", block: b.id, minutes: b.minutes, cases: b.cases, mode: S.mode });
   renderPlan();
   startCase();
@@ -353,13 +360,15 @@ function blockTick() {
   const left = S.block.end - performance.now();
   const el = $("blocktimer");
   const q = S.mode === "recap" || (S.mode === "guided" && S.baseMode === "recap") ? S.recap : S.rad;
-  if (el) el.textContent = !isFinite(left) ? `${Math.min(q.idx + 1, q.queue.length)}/${q.queue.length}` : left > 0 ? `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, "0")}` : "0:00";
+  if (el && S.block.solves && !isFinite(left)) el.textContent = `${S.block.doneSolves}/${S.block.solves}`;
+  else if (el) el.textContent = !isFinite(left) ? `${Math.min(q.idx + 1, q.queue.length)}/${q.queue.length}` : left > 0 ? `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, "0")}` : "0:00";
   // Tiden ute: blokken avsluttes når casen du står i er ferdig (eller med en gang hvis du ikke har startet den).
   if (left <= 0 && !S.block.warned) {
     S.block.warned = true;
     beep(3);
     flash("Tiden er ute");
-    if (["result", "predict", "recog", "review", "idle", "pause"].includes(S.phase) || (S.phase === "case" && S.cur && S.cur.execStart == null)) endBlock();
+    if (["result", "predict", "recog", "review", "idle", "pause"].includes(S.phase) || (S.phase === "case" && S.cur && S.cur.execStart == null)
+      || (S.mode === "slow" && ["scramble", "needcross"].includes(S.slow.phase))) endBlock();
   }
   clearTimeout(blockTick.t);
   blockTick.t = setTimeout(blockTick, 250);
@@ -614,6 +623,7 @@ function flash(text) {
 
 // ---------- trekk inn ----------
 function onMove(face, a) {
+  if (S.trainer === "pll") { PLL.onMove(face, a); return; }
   const now = performance.now();
   if (S.mode === "slow") { slowMove(face, a, now); return; }
   if (S.mode === "predict") { if (S.phase === "predict" && face === "D") predictAnswer(a === 1); return; }
@@ -783,6 +793,7 @@ function slowFinish(now) {
     ok: W.last.ok, feil: W.last.feil, ikkeAvtalt: W.last.na, ikkeVurdert: W.last.nv, ms: Math.round(W.last.ms), crossMs: W.crossMs != null ? Math.round(W.crossMs) : null });
   beep(1);
   slowNewScramble();
+  if (S.block && S.block.solves && ++S.block.doneSolves >= S.block.solves) endBlock();
 }
 function slowSkipCorr() {
   const W = S.slow;
@@ -1166,16 +1177,39 @@ function bind() {
   $("retry").addEventListener("click", () => { if (S.cur) startCase(true); });
 }
 
+// Bytt mellom F2L- og PLL-treneren. 3D-kuben flyttes med.
+function switchTrainer(t) {
+  if (t === S.trainer) return;
+  S.trainer = t;
+  document.querySelectorAll("[data-trainer]").forEach((b) => b.classList.toggle("on", b.dataset.trainer === t));
+  $("f2l-ui").hidden = t !== "f2l";
+  $("pll-ui").hidden = t !== "pll";
+  document.querySelector("h1").textContent = t === "pll" ? "PLL-trener" : "F2L-trener";
+  if (t === "pll") {
+    if (S.block) endBlock();
+    clearInterval(S.review.timer); S.review.timer = null;
+    S.phase = "idle"; S.cur = null;
+    PLL.activate();
+  } else {
+    PLL.deactivate();
+    if (view3d) $("stage").prepend(view3d.container);
+    startCase();
+  }
+}
+
 async function boot() {
   bind();
   try {
     const { Cube3D } = await import("./view3d.js");
     view3d = new Cube3D($("cube3d"));
     view3d.set(S.facelets, false);
+    view3d.container = $("cube3d");
   } catch (e) {
     console.warn("3D-visning utilgjengelig, bruker 2D", e);
     $("cube3d").hidden = true;
   }
+  PLL.init({ view3d, beep, onBlockDone: (id) => { S.blocksDone.add(id); renderPlan(); } });
+  document.querySelectorAll("[data-trainer]").forEach((b) => b.addEventListener("click", () => switchTrainer(b.dataset.trainer)));
   if (window.acubemy) {
     acubemy.onDeviceChange((d) => {
       $("device").textContent = d.connected ? d.deviceName || "Kube tilkoblet" : "Ingen kube – koble til i acubemy";
@@ -1184,6 +1218,10 @@ async function boot() {
     acubemy.onGyro((q) => {
       if (!view3d) return;
       view3d.setGyro(q);
+      if (S.trainer === "pll") {
+        requestAnimationFrame(() => { const g = view3d.grip(); const k = g ? g.U + g.F : ""; if (k !== S.gripKey) { S.gripKey = k; PLL.onGrip(); } });
+        return;
+      }
       // Oppdater hint/påminnelse når kuben roteres, uten å vente på et trekk.
       if (S.phase === "case") {
         requestAnimationFrame(() => {
@@ -1194,11 +1232,12 @@ async function boot() {
       }
     });
     acubemy.onMove(({ face, prime }) => onMove(face, prime ? 3 : 1));
-    acubemy.onStateChange((f) => { if (S.mode === "slow") slowSync(f); });
+    acubemy.onStateChange((f) => { if (S.trainer === "f2l" && S.mode === "slow") slowSync(f); });
   }
   if (!embedded) $("device").textContent = "Utenfor acubemy: tastene U R F D L B (Shift = mot klokka) simulerer kuben i kubens egen ramme";
   window.__sim = (mv) => { const f = mv[0]; const a = mv.includes("2") ? 2 : mv.includes("'") ? 3 : 1; for (let i = 0; i < (a === 2 ? 2 : 1); i++) onMove(f, a === 2 ? 1 : a); };
   window.__state = S;
+  window.__switch = switchTrainer;
   window.__slowSet = (f) => { S.facelets = f; slowSynced("test"); }; // for tester utenfor acubemy
   loadPlan();
   startCase();

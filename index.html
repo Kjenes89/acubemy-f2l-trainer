@@ -8,12 +8,14 @@
 </head>
 <body>
 <header>
-  <h1>F2L-trener</h1>
+  <h1>Smartkube-trener</h1>
+  <div class="seg" id="trainer-switch"><button data-trainer="f2l" class="on">F2L</button><button data-trainer="pll">PLL</button></div>
   <span id="device" class="warn">Venter på acubemy …</span>
 </header>
 
 <div id="planbar" class="planbar" hidden></div>
 
+<div id="f2l-ui">
 <div class="bar">
   <div class="seg">
     <button data-mode="learn">Learn</button>
@@ -89,8 +91,44 @@
     <section class="panel"><h2>Økta</h2><div id="stats"></div></section>
   </aside>
 </main>
+</div>
 
-<footer class="muted small"><span id="logstatus"></span><br>Snarveier (fire like trekk) under casen: gul U4 = kalibrer gyro · hvit D4 = samme case igjen · oransje R4 = guidet av/på · rød L4 = neste case. I resultatvinduet: U = videre · rød L4 = gjenta · oransje R4 = guidet<br>M2.10 · Slow solve: scramble med løst kryss på den fysiske kuben (hvit ned), løs F2L – hvert F2L-par vurderes mot avtalt løsning (gul U4 = kalibrer gyro) · øvrige moduser: casen lages på skjermen og trekkene dine brukes på den – den fysiske kuben trenger ikke stå i noen bestemt tilstand · hold grønn foran og hvit ned, og se på skjermen · algoritmene vises som i boka, og rotasjonene må gjøres (kontrolleres med gyroen)</footer>
+<div id="pll-ui" hidden>
+<div class="bar">
+  <div class="seg">
+    <button data-pmode="drill" class="on">Drill</button>
+    <button data-pmode="weighted">Weighted</button>
+    <button data-pmode="rad">På rad</button>
+    <button data-pmode="guided">Guidet</button>
+  </div>
+  <span id="p-rad-opts" class="chk" hidden><select id="p-rad-n"><option>1</option><option>2</option><option selected>3</option><option>5</option></select> på rad · svakeste først</span>
+  <label class="chk" title="Casen vises med tilfeldig sidefarge foran. Hold fortsatt grønn foran og hvit ned."><input type="checkbox" id="p-colorswap" checked> Bytt farger</label>
+  <button id="p-toggle-algs">Algoritmer</button>
+  <button id="p-toggle-picker">Caser · <span id="p-sel-count"></span></button>
+  <button id="p-calib" title="Hold hvit ned og grønn foran, og trykk">Kalibrer gyro</button>
+  <button id="p-retry">Prøv igjen</button>
+  <button id="p-skip">Neste case</button>
+</div>
+<div id="p-picker-wrap" hidden>
+  <div id="p-groups" class="bar small"></div>
+  <div id="p-picker"></div>
+</div>
+<div id="p-algs-wrap" class="panel" hidden><table id="p-algs"></table></div>
+<main>
+  <section id="p-main" class="panel">
+    <div id="p-flash" class="flash"></div>
+    <div id="p-stage"></div>
+    <div id="p-phase"></div>
+  </section>
+  <aside>
+    <section class="panel"><h2>Siste</h2><div id="p-result"></div></section>
+    <section class="panel"><h2>Økta</h2><div id="p-stats"></div></section>
+  </aside>
+</main>
+<p class="muted small">PLL: casen lages på skjermen med tilfeldig pre- og post-AUF. Hold hvit ned og grønn foran. Bare algoritmen din godtas, med rotasjonene i den (x/y i A, E og V). Tiden stopper når kuben er helt løst, altså etter post-AUF. Gjenkjenning trenes i PLL-recognition-appen. I casen: gul U4 = kalibrer gyro. I resultatet: U = videre · rød L4 = gjenta.</p>
+</div>
+
+<footer class="muted small"><span id="logstatus"></span><br>Snarveier (fire like trekk) under casen: gul U4 = kalibrer gyro · hvit D4 = samme case igjen · oransje R4 = guidet av/på · rød L4 = neste case. I resultatvinduet: U = videre · rød L4 = gjenta · oransje R4 = guidet<br>M3.0 · Slow solve: scramble med løst kryss på den fysiske kuben (hvit ned), løs F2L – hvert F2L-par vurderes mot avtalt løsning (gul U4 = kalibrer gyro) · øvrige moduser: casen lages på skjermen og trekkene dine brukes på den – den fysiske kuben trenger ikke stå i noen bestemt tilstand · hold grønn foran og hvit ned, og se på skjermen · algoritmene vises som i boka, og rotasjonene må gjøres (kontrolleres med gyroen)</footer>
 
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }</script>
 <script src="https://cdn.jsdelivr.net/gh/acubemy/plugin-sdk@1/v1.js"></script>

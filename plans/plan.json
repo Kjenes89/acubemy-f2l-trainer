@@ -1,8 +1,10 @@
 {
   "date": "2026-11-12",
-  "title": "Eksempel – erstattes av Claude når en økt planlegges",
+  "title": "Testøkt 12.11. – slow solve og PLL-treneren (ca. 45 min)",
   "blocks": [
-    { "id": "f2l-asker-rad", "trainer": "f2l", "name": "Asker-casene, 3 på rad", "cases": [7, 8, 9, 16, 33], "mode": "rad", "n": 3, "order": "weakest" },
-    { "id": "f2l-asker-drill", "trainer": "f2l", "name": "Asker-casene, blandet", "cases": [7, 8, 9, 16, 33], "minutes": 5, "mode": "drill" }
+    { "id": "t1-f2l-drill", "trainer": "f2l", "name": "1 · F2L-drill, oppvarming", "cases": [7, 8, 9, 16, 33], "minutes": 5, "mode": "drill" },
+    { "id": "t2-slow", "trainer": "f2l", "name": "2 · Slow solve", "cases": [7, 8, 9, 16, 33], "mode": "slow", "solves": 8 },
+    { "id": "t3-pll-rot", "trainer": "pll", "name": "3 · PLL med rotasjoner", "cases": ["Aa", "Ab", "E", "V", "Gb"], "minutes": 4, "mode": "drill" },
+    { "id": "t4-pll-alle", "trainer": "pll", "name": "4 · PLL, alle 21", "cases": ["Aa", "Ab", "E", "F", "Ga", "Gb", "Gc", "Gd", "H", "Ja", "Jb", "Na", "Nb", "Ra", "Rb", "T", "Ua", "Ub", "V", "Y", "Z"], "minutes": 8, "mode": "weighted" }
   ]
 }

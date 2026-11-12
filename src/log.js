@@ -42,5 +42,5 @@ export async function flush() {
 }
 
 setInterval(flush, 30000);
-addEventListener("pagehide", flush);
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); });
+if (typeof addEventListener === "function") addEventListener("pagehide", flush);
+if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); });

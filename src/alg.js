@@ -35,12 +35,12 @@ export function tokenize(alg) {
 }
 
 function parseToken(tok) {
-  const m = /^([URFDLBMESxyzurfdlb])(w?)(2'|'2|2|')?$/.exec(tok);
+  const m = /^([URFDLBMESxyzurfdlb])(w?)(2'|'2|2|'|3)?$/.exec(tok);
   if (!m) throw new Error("Ukjent trekk: " + tok);
   let base = m[1];
   if (m[2]) base = base.toLowerCase();
   const suf = m[3] || "";
-  const amt = suf.includes("2") ? 2 : suf === "'" ? 3 : 1;
+  const amt = suf.includes("2") ? 2 : suf === "'" || suf === "3" ? 3 : 1; // R3 = tre kvarttrekk (fingertriks), samme som R'
   return { base, amt };
 }
 
