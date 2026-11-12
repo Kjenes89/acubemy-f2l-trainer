@@ -793,7 +793,7 @@ function slowMove(face, a, now) {
   if (W.phase === "scramble") {
     W.tracker.step(face, a);
     if (!W.tracker.items.length) {
-      W.phase = "solve"; W.t0 = now; W.solved = solvedSlots(S.facelets); W.f2l = crossSolved(S.facelets);
+      W.phase = "solve"; W.t0 = now; W.solved = solvedSlots(S.facelets); W.f2l = crossSolved(S.facelets); W.lastNote = null;
       slowResetSeg(now);
     }
   } else if (W.phase === "correct") {
@@ -877,6 +877,7 @@ function slowCheck(now) {
 function slowFinish(now) {
   const W = S.slow;
   const cnt = (v) => W.pairs.filter((p) => p.verdict === v).length;
+  W.lastNote = W.note; // meldingen for siste par skal vises også etter at neste scramble er kommet
   W.last = { no: W.no, ok: cnt("ok"), feil: cnt("feil"), na: cnt("ikke-avtalt") + cnt("utenfor"), nv: cnt("ikke-vurdert"), ms: now - W.t0, pairs: W.pairs, target: W.target };
   const rec = { event: "slowsolve", trainer: "f2l", mode: "slowsolve", block: S.block ? S.block.id : null, solve: W.no, end: W.end, scramble: W.scramble.map(heldName).join(" "), target: W.target ? W.target.n : null,
     ok: W.last.ok, feil: W.last.feil, ikkeAvtalt: W.last.na, ikkeVurdert: W.last.nv, ms: Math.round(W.last.ms), crossMs: W.crossMs != null ? Math.round(W.crossMs) : null };
@@ -995,6 +996,7 @@ function slowPanel() {
     return `<div class="hint">Scramble ${W.no} – hold <b>hvit ned, grønn foran</b> · krysset står${W.target ? " · én av fokuscasene (utvalget i «Caser») er med" : ""}</div>
       <div class="scr">${chips(W.scramble.slice(0, Math.max(0, doneN)).map(heldName), "done")}${items.map((m, i) => `<span class="mv ${m.corr ? "bad" : i === firstOpen ? "now" : ""}">${heldName(m)}</span>`).join("")}</div>
       ${items.some((m) => m.corr) ? `<div class="slowbad small">Rødt = rett opp først</div>` : ""}
+      ${W.lastNote ? `<div class="${W.lastNote.cls === "ok" ? "okline" : W.lastNote.cls === "warn" ? "warnline" : "muted"}">Siste par: ${W.lastNote.text}</div>` : ""}
       ${last}${W.last ? `<div class="pps">${W.last.pairs.map(pairChip("last")).join("")}</div>${W.showPair && W.showPair.src === "last" ? pairDetail() : ""}` : ""}`;
   }
   if (W.phase === "correct" && W.wrong) {
