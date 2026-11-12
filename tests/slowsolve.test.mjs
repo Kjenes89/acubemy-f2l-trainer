@@ -133,6 +133,20 @@ check(tested6 > 10, `uttak testet ${tested6}`);
   check(ran9 > 0, "9 gammel løsning testet");
 }
 
+// 6c) Grep fra før casen startet (eller en rotasjon midt i løsningen) bestemmer ikke sporet:
+//     17 startet i FL (ingen avtalt løsning der) med y midt i → ikke-avtalt i FL, ikke feil i BL.
+{
+  const yG = rotateGrip(START_GRIP, "y", 1);
+  const c17 = CASE_BY_N[17];
+  // en løsning som starter i startgrepet, roterer y og setter inn (trekkene trenger ikke være avtalt)
+  const mv = expand("R U2 R' y L U L'", START_GRIP).moves.map((m) => ({ ...m, grips: [m.grip] }));
+  const st = applyMoves(SOLVED, invert(mv));
+  const nw = newly(st, applyMoves(st, mv));
+  const pre = [{ face: "D", amt: 0, grip: yG, grips: [yG] }].filter((m) => m.amt);
+  const r = judgePair({ start: st, moves: mv, slot: nw[0], startGrip: yG }); // segmentet startet i y-grep
+  check(r.verdict !== "feil" || r.held === heldSlot(nw[0], START_GRIP), `grep ved start avgjør sporet: ${JSON.stringify(r)}`);
+}
+
 // 7) Kryss og scramble.
 check(crossSolved(SOLVED) && !crossSolved(turn(SOLVED, "F", 1)) && crossSolved(turn(SOLVED, "D", 1)), "kryss");
 // Scramblene: krysset står alltid; målscramblen gir riktig case i riktig spor, også fra F2L-løst med uløst siste lag.

@@ -181,9 +181,10 @@ export function judgePair({ start, moves, slot, startGrip = null }) {
   const gripAtJ = gripsOf(moves[j])[0] || startGrip;
   const did = didInYourGrip(moves.slice(j), gripAtJ || START_GRIP);
   const undo = simplify(invert(moves.slice(j)));
-  // Feil bare når det finnes en avtalt løsning i sporet slik du faktisk holdt kuben (ved start eller underveis).
-  // Ellers: ikke avtalt – med forslag (rotasjon + avtalt løsning), men uten alarm.
-  const seen = uniqGrips([gripAtJ, ...moves.slice(0, j + 1).flatMap(gripsOf).reverse(), startGrip]);
+  // Sporet er det du holdt kuben i ved første trekk i casen. Feil bare når det finnes en avtalt løsning der;
+  // ellers ikke avtalt – med forslag (rotasjon + avtalt løsning), men uten alarm. (Før ble også grep fra
+  // tidligere i segmentet og rotasjoner underveis brukt, så 17 løst fra FL kunne bli vurdert som BL.)
+  const seen = uniqGrips([gripAtJ || startGrip]);
   for (const g of seen) {
     const { held, v } = optionsFor(n, g);
     if (v) return { verdict: "feil", n, held, alg: v.alg, grip: g, slot, did, undo, from: j };
