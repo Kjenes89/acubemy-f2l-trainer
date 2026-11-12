@@ -170,7 +170,7 @@ export function judgePair({ start, moves, slot, startGrip = null }) {
   const seen = uniqGrips([gripAtJ, ...moves.slice(0, j + 1).flatMap(gripsOf).reverse(), startGrip]);
   for (const g of seen) {
     const { held, v } = optionsFor(n, g);
-    if (v) return { verdict: "feil", n, held, alg: v.alg, did, undo, from: j };
+    if (v) return { verdict: "feil", n, held, alg: v.alg, grip: g, slot, did, undo, from: j };
   }
   for (const g of withY([gripAtJ])) {
     const { held, v } = optionsFor(n, g);

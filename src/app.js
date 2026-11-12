@@ -760,7 +760,7 @@ function slowStart() {
 // én av casene i utvalget (målcasen) i et tilfeldig spor; de andre parene blandes fritt.
 function slowNewScramble() {
   const W = S.slow;
-  W.pairs = []; W.corr = null; W.wrong = null; W.note = null; W.f2l = false;
+  W.pairs = []; W.corr = null; W.wrong = null; W.note = null; W.f2l = false; W.retry = null; W.guide = null; W.guideAfter = false;
   if (!crossSolved(S.facelets)) { W.phase = "needcross"; W.target = null; return; }
   W.no++;
   const pool = CASES.map((c) => c.n).filter((n) => S.selection.has(n));
@@ -798,9 +798,14 @@ function slowMove(face, a, now) {
   } else if (W.phase === "correct") {
     W.corr.step(face, a);
     if (!W.corr.items.length) {
+      W.retry = W.wrong; // står du fast: R4 eller «Guidet» gir avtalt løsning trekk for trekk
       W.phase = "solve"; W.wrong = null; W.solved = solvedSlots(S.facelets);
-      slowResetSeg(now); flash("Prøv igjen");
+      slowResetSeg(now);
+      if (W.guideAfter) { W.guideAfter = false; slowStartGuide(); } else flash("Prøv igjen");
     }
+  } else if (W.phase === "guide") {
+    W.guide.step(face, a, mv.grip);
+    if (!W.guide.items.length) slowEndGuide(now);
   } else if (W.phase === "solve") {
     W.seg.moves.push(mv);
     // Gul U4 (hvit ned) = kalibrer gyro, som ellers. Fire like U-trekk endrer ikke kuben, så de tas ut av sporingen.
@@ -808,6 +813,10 @@ function slowMove(face, a, now) {
     if (fourInRow(W.recent, face, a, now) && face === "D") {
       if (window.acubemy) acubemy.calibrateGyro();
       W.seg.moves.splice(-4); W.recent = []; flash("Gyro kalibrert");
+    }
+    // Oransje R4 (hvit ned) etter en retting = guidet avtalt løsning. Fire like trekk endrer ikke kuben.
+    if (W.retry && fourInRow(W.recent, face, a, now) && face === "L") {
+      W.seg.moves.splice(-4); W.recent = []; slowStartGuide(); render(); return;
     }
     slowCheck(now);
   } else if (W.phase === "needcross") {
@@ -831,6 +840,7 @@ function slowCheck(now) {
   } else if (fresh.length === 1) {
     const seg = W.seg;
     const r = judgePair({ start: seg.start, moves: seg.moves, slot: fresh[0], startGrip: seg.grip });
+    W.retry = null;
     const from = r.from != null ? seg.moves[r.from] : null;
     const rec = from ? from.t - seg.t : null, exec = from ? now - from.t : null;
     W.pairs.push({ ...r, rec, exec });
@@ -871,10 +881,39 @@ function slowFinish(now) {
   slowNewScramble();
   if (S.block && S.block.solves) { S.block.doneSolves = solvesDone(S.block.id); if (S.block.doneSolves >= S.block.solves) endBlock(); }
 }
+// Guidet avtalt løsning i slow solve (etter en retting, når du står fast). Teller ikke som riktig.
+function slowStartGuide() {
+  const W = S.slow, r = W.retry;
+  if (!r || !r.grip) { W.retry = null; return; }
+  const all = expand(r.alg, r.grip).moves.map((m) => ({ face: m.face, amt: m.amt, grip: m.grip }));
+  let k0 = 0; while (k0 < all.length && all[k0].face === "D") k0++;
+  const rest = all.slice(k0);
+  // AUF slik kuben står nå (bokas innledende U-trekk erstattes av det som faktisk trengs)
+  for (let k = 0; k < 4; k++) {
+    let f = S.facelets;
+    const seq = k ? [{ face: "D", amt: k, auf: true }, ...rest] : rest;
+    for (const m of seq) f = turn(f, m.face, m.amt);
+    if (crossSolved(f) && solvedSlots(f).has(r.slot)) {
+      W.guide = new Tracker(seq); W.guideCase = r; W.phase = "guide"; W.retry = null;
+      flash("Guidet – følg trekkene");
+      return;
+    }
+  }
+  W.retry = null; flash("Fant ikke avtalt løsning herfra – løs paret selv");
+}
+function slowEndGuide(now) {
+  const W = S.slow, r = W.guideCase;
+  log({ block: S.block ? S.block.id : null, trainer: "f2l", mode: "guided", solve: W.no, case: r.n, slot: r.held, ok: true, alg: r.alg });
+  W.phase = "solve"; W.guide = null; W.guideCase = null;
+  W.note = { cls: "warn", text: `F2L ${r.n} (${r.held}) guidet – teller ikke. Avtalt: ${r.alg}` };
+  W.solved = solvedSlots(S.facelets);
+  slowResetSeg(now);
+  slowCheck(now);
+}
 function slowSkipCorr() {
   const W = S.slow;
   if (W.phase !== "correct") return;
-  W.phase = "solve"; W.wrong = null; W.corr = null; W.solved = solvedSlots(S.facelets);
+  W.phase = "solve"; W.wrong = null; W.corr = null; W.retry = null; W.guideAfter = false; W.solved = solvedSlots(S.facelets);
   slowResetSeg(performance.now());
   render();
 }
@@ -921,13 +960,23 @@ function slowPanel() {
       <div class="hint">Tilbake til før algoritmen:</div>
       <div class="scr">${W.corr.items.map((m) => `<span class="mv bad">${gripNotation(m, g)}</span>`).join("")}</div>
       <div>Så avtalt løsning (${r.held}): <b class="mono">${r.alg}</b></div>
-      <button id="slow-skipcorr">Hopp over</button>${pairs}`;
+      <button id="slow-skipcorr">Hopp over</button> <button id="slow-guideafter" class="${W.guideAfter ? "on" : ""}">${W.guideAfter ? "Guidet etter retting ✓" : "Guidet etter retting"}</button>${pairs}`;
+  }
+  if (W.phase === "guide" && W.guide) {
+    const r = W.guideCase, g = liveGrip() || START_GRIP, items = W.guide.items, head = items[0];
+    const need = head && !head.corr && !head.auf && head.grip ? yNeeded(g, head.grip) : "";
+    return `<div class="warnline big">Guidet – F2L ${r.n} i ${r.held} (teller ikke)</div>
+      <div>Avtalt: <b class="mono">${r.alg}</b></div>
+      ${need ? `<div class="hint">Roter: <span class="mv now">${need}</span></div>` : ""}
+      <div class="scr">${items.map((m, i) => `<span class="mv ${m.corr ? "bad" : i === 0 ? "now" : ""}">${m.auf ? heldName(m) : gripNotation(m, m.corr ? g : m.grip || g)}</span>`).join("")}</div>
+      ${items.some((m) => m.corr) ? `<div class="slowbad small">Rødt = rett opp først</div>` : ""}${pairs}`;
   }
   if (W.phase === "needcross") return `<div class="hint">Løs krysset (eller hele kuben) – så kommer scramblen. Den bevarer krysset.</div>${last}`;
   const status = W.phase === "ll" ? "F2L ferdig – løs siste lag (vurderes ikke ennå)"
     : !W.f2l ? "Løs krysset (hvit ned). F2L-parene vurderes når krysset står."
     : `F2L: ${W.solved.size} av 4 par · hvert par vurderes når det er satt inn`;
   return `<div class="hint">${status}</div>
+    ${W.retry ? `<div class="warnline">Prøv F2L ${W.retry.n} igjen · står du fast: oransje R4 eller <button id="slow-guide">Guidet</button></div>` : ""}
     ${W.note ? `<div class="${W.note.cls === "ok" ? "okline" : W.note.cls === "warn" ? "warnline" : "muted"}">${W.note.text}</div>` : ""}
     ${pairs}${last}`;
 }
@@ -948,7 +997,8 @@ function tick() {
 
 const chips = (list, cls = "") => list.map((t) => `<span class="mv ${cls}">${t}</span>`).join("");
 
-function liveGrip() { return view3d ? view3d.grip() : null; }
+let testGrip = null; // bare for nettlesertester (window.__setGrip), aldri satt i acubemy
+function liveGrip() { return testGrip || (view3d ? view3d.grip() : null); }
 function notate(m, fallbackGrip) {
   const g = liveGrip();
   return g ? gripNotation(m, g) : fallbackGrip ? gripNotation(m, fallbackGrip) : heldNotation(m);
@@ -1119,6 +1169,8 @@ function render() {
   $("mixll").parentElement.hidden = $("colorswap").parentElement.hidden = S.mode === "slow";
   document.querySelector('[data-mode="guided"]').disabled = S.mode === "recog" || S.mode === "predict" || S.mode === "slow";
   if ($("slow-skipcorr")) $("slow-skipcorr").onclick = slowSkipCorr;
+  if ($("slow-guideafter")) $("slow-guideafter").onclick = () => { S.slow.guideAfter = !S.slow.guideAfter; render(); };
+  if ($("slow-guide")) $("slow-guide").onclick = () => { slowStartGuide(); render(); };
   if ($("p-yes")) { $("p-yes").onclick = () => predictAnswer(true); $("p-no").onclick = () => predictAnswer(false); }
   if ($("rv-play")) { $("rv-play").onclick = reviewPlay; $("rv-prev").onclick = () => reviewShow(-1); $("rv-next").onclick = () => reviewShow(1); $("rv-rand").onclick = () => reviewShow(0); }
   document.querySelectorAll("[data-auf]").forEach((b) => (b.onclick = () => answerAuf(+b.dataset.auf)));
@@ -1336,6 +1388,7 @@ async function boot() {
   window.__sim = (mv) => { const f = mv[0]; const a = mv.includes("2") ? 2 : mv.includes("'") ? 3 : 1; for (let i = 0; i < (a === 2 ? 2 : 1); i++) onMove(f, a === 2 ? 1 : a); };
   window.__state = S;
   window.__switch = switchTrainer;
+  window.__setGrip = (g) => { testGrip = g; };
   window.__slowSet = (f) => { S.facelets = f; slowSynced("test"); }; // for tester utenfor acubemy
   loadPlan();
   startCase();
