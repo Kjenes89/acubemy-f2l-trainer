@@ -948,10 +948,16 @@ function slowSync(f) {
   S.facelets = p && W.lag.pre >= W.lag.post ? turn(f, p.face, p.a) : f;
   slowSynced("Synket med acubemy");
 }
-function slowSynced(msg) {
+function slowSynced(msg, reset = false) {
   const W = S.slow;
   if (view3d) view3d.set(S.facelets, false);
-  if (W.phase === "solve") { W.solved = solvedSlots(S.facelets); W.f2l = crossSolved(S.facelets); slowResetSeg(performance.now()); }
+  // Ny tilstand midt i scramble, retting eller guidet (eller «Kuben er løst»): det som var igjen å gjøre,
+  // gjelder ikke lenger. Start på nytt fra kuben slik den er nå (ny scramble, eller «løs krysset»).
+  if (reset || !["solve", "ll"].includes(W.phase)) {
+    W.corr = null; W.wrong = null; W.guide = null; W.guideCase = null; W.backCase = null; W.retry = null; W.guideAfter = false;
+    W.no = Math.max(0, W.no - (W.phase === "scramble" ? 1 : 0)); // scramblen ble aldri løst – samme nummer igjen
+    slowNewScramble();
+  } else if (W.phase === "solve") { W.solved = solvedSlots(S.facelets); W.f2l = crossSolved(S.facelets); slowResetSeg(performance.now()); }
   flash(msg);
   render();
 }
@@ -1352,7 +1358,7 @@ function bind() {
   $("calib").addEventListener("click", () => { if (window.acubemy) acubemy.calibrateGyro(); });
   $("skip").addEventListener("click", () => { if (S.mode === "slow") { slowNewScramble(); render(); } else shortcut("next"); });
   num("slow-end", (v) => { S.slow.end = v; });
-  $("slow-sync").addEventListener("click", () => { S.facelets = SOLVED; slowSynced("Satt til løst"); });
+  $("slow-sync").addEventListener("click", () => { S.facelets = SOLVED; slowSynced("Satt til løst – ny scramble", true); });
   $("retry").addEventListener("click", () => { if (S.cur) startCase(true); });
 }
 
