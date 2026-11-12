@@ -141,3 +141,13 @@ input[type=number] { background: #1b2027; color: var(--text); border: 1px solid 
 .ad-s { font-size: 14px; color: var(--muted); }
 
 [hidden] { display: none !important; }
+
+.strip { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; max-width: 420px; }
+.strip span { font: 12px ui-monospace, Consolas, monospace; padding: 2px 6px; border-radius: 5px; }
+.strip .g { background: #143823; color: var(--good); } .strip .b { background: #3a1a1a; color: var(--bad); }
+.pred { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center; }
+.pred svg { width: 170px; height: 182px; }
+.pred-alg { font: 600 20px ui-monospace, Consolas, monospace; display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: 220px; }
+.pred-alg span { color: var(--muted); font-size: 28px; }
+.pred-q { font-size: 18px; }
+.o-keys button { border-radius: 999px; padding: 8px 18px; }
