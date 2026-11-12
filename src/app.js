@@ -1184,7 +1184,7 @@ function bind() {
     if (r.ok) { $("pin").value = ""; $("pin").blur(); flash("Logging på"); }
   };
   $("pin-ok").addEventListener("click", tryPin);
-  $("pin").addEventListener("keydown", (e) => { if (e.key === "Enter") tryPin(); });
+  $("pin").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); tryPin(); } });
   $("calib").addEventListener("click", () => { if (window.acubemy) acubemy.calibrateGyro(); });
   $("skip").addEventListener("click", () => { if (S.mode === "slow") { slowNewScramble(); render(); } else shortcut("next"); });
   num("slow-end", (v) => { S.slow.end = v; });
