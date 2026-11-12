@@ -84,7 +84,6 @@ function pick() {
 
 // ---------- case ----------
 function startCase(same = false) {
-  if (P.block && performance.now() >= P.block.end) { endBlock(); return; }
   const c = same && P.cur ? P.cur.c : pick();
   if (!c) {
     const radDone = P.mode === "rad" && P.rad.queue.length;
@@ -144,6 +143,7 @@ function fourInRow(list, face, a, now) {
   return list.length === 4 && list.every((m) => m.face === face && m.a === a) && now - list[0].t < 1500;
 }
 export function onMove(face, a) {
+  if (P.block && P.block.pausedAt) return;
   const now = performance.now();
   if (P.phase === "result") {
     // Gul U (kubens D) = neste. Rød L4 (kubens R) = samme case igjen.
@@ -247,9 +247,10 @@ function render() {
       ${P.mode === "rad" && P.rad.queue.length ? `<div class="radprog">Case ${Math.min(P.rad.idx + 1, P.rad.queue.length)} av ${P.rad.queue.length} · ${"●".repeat(P.rad.streak)}${"○".repeat(Math.max(0, P.rad.n - P.rad.streak))}</div>` : ""}
       ${reminder(cur)}`;
   }
-  if (P.block) main = `<div class="radprog">Blokk: ${P.block.name} · <span id="p-blocktimer"></span> <button id="p-stopblock">Avslutt</button></div>` + main;
+  if (P.block) main = `<div class="radprog">Blokk: ${P.block.name} · <span id="p-blocktimer"></span> <button id="p-pauseblock">${P.block.pausedAt ? "Fortsett" : "Pause"}</button> <button id="p-stopblock">Avslutt</button></div>` + main;
   $("p-phase").innerHTML = main;
   if ($("p-stopblock")) $("p-stopblock").onclick = endBlock;
+  if ($("p-pauseblock")) $("p-pauseblock").onclick = togglePause;
   $("p-stage").hidden = P.phase === "result" || P.phase === "idle";
   document.querySelectorAll("[data-pmode]").forEach((b) => b.classList.toggle("on", b.dataset.pmode === P.mode));
   $("p-rad-opts").hidden = !(P.mode === "rad" || (P.mode === "guided" && P.baseMode === "rad"));
@@ -290,13 +291,20 @@ export function startBlock(b) {
 }
 function blockTick() {
   if (!P.block) return;
-  const left = P.block.end - performance.now();
+  const left = P.block.end - (P.block.pausedAt || performance.now());
   const el = $("p-blocktimer");
-  if (el) el.textContent = !isFinite(left) ? `${Math.min(P.rad.idx + 1, P.rad.queue.length)}/${P.rad.queue.length}` : left > 0 ? `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, "0")}` : "0:00";
-  if (left <= 0 && !P.block.warned) {
-    P.block.warned = true; ctx.beep(3); flash("Tiden er ute");
-    if (P.phase !== "case" || P.cur.execStart == null) endBlock();
-  }
+  const mmss = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
+  if (el) el.textContent = (P.block.pausedAt ? "⏸ " : "") + (!isFinite(left) ? `${Math.min(P.rad.idx + 1, P.rad.queue.length)}/${P.rad.queue.length}` : left > 0 ? mmss(left) : "+" + mmss(-left));
+  // Tiden ute: blokken går på overtid til du avslutter selv.
+  if (left <= 0 && !P.block.warned) { P.block.warned = true; ctx.beep(3); flash("Tiden er ute – fortsett eller avslutt"); }
+}
+function togglePause() {
+  if (!P.block) return;
+  if (P.block.pausedAt) {
+    P.block.end += performance.now() - P.block.pausedAt; P.block.pausedAt = null; flash("Fortsetter");
+    if (P.phase === "case" && P.cur) { startCase(true); return; }
+  } else { P.block.pausedAt = performance.now(); flash("Pause"); }
+  render();
 }
 setInterval(() => { if (active && P.block) blockTick(); }, 500);
 function endBlock() {

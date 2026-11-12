@@ -187,3 +187,4 @@ button:disabled { opacity: .4; cursor: default; }
 #pinbox { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: #3a2c0c; border: 2px solid var(--warn); color: var(--warn); border-radius: 10px; padding: 8px 12px; width: 100%; }
 #pinbox[hidden] { display: none !important; }
 #pinbox input { background: #0b0d10; color: var(--text); border: 1px solid #333b45; border-radius: 8px; padding: 6px 10px; font: inherit; }
+.blocktimer.over { color: var(--warn, #f59e0b); }

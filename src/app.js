@@ -185,7 +185,8 @@ function radAdvance(reason) {
 function startCase(sameAgain = false) {
   hideOverlay();
   if (S.mode === "slow") { slowStart(); return; }
-  if (S.block && (performance.now() >= S.block.end || S.block.roundDone)) { endBlock(); return; }
+  // Tidsblokker går på overtid til du avslutter dem selv; bare rundeblokker slutter av seg selv.
+  if (S.block && S.block.roundDone) { endBlock(); return; }
   if (S.mode === "predict") { if (S.predict.sub === "review") reviewShow(0); else newPredictRound(); return; }
   if (S.mode === "recog") { newRecogRound(); return; }
   const picked = sameAgain && S.cur ? S.cur.c : pickCase();
@@ -297,7 +298,12 @@ async function loadHist() {
   if (!LOG_URL) return;
   try {
     const r = await fetch(LOG_URL.replace(/\/api\/log$/, "/api/stats?days=14"));
-    if (r.ok) { const j = await r.json(); S.hist = (j.trainers && j.trainers.f2l) || j.cases || {}; }
+    if (r.ok) {
+      const j = await r.json();
+      S.hist = (j.trainers && j.trainers.f2l) || j.cases || {};
+      S.blocksEnded = j.blocksEnded || []; // avsluttede blokker fra loggen (✓ overlever omlasting)
+      renderPlan();
+    }
   } catch (e) { /* uten historikk brukes bare økta */ }
 }
 
@@ -315,10 +321,13 @@ function renderPlan() {
   const el = $("planbar");
   if (!blocks.length) { el.hidden = true; return; }
   el.hidden = false;
+  // Blokker avsluttet på plandagen (norsk tid) ifølge loggen teller som ferdige, også etter omlasting.
+  const day = (t) => new Date(t).toLocaleDateString("sv-SE", { timeZone: "Europe/Oslo" });
+  for (const e of S.blocksEnded || []) if (S.plan.date && e.t && day(e.t) === S.plan.date) S.blocksDone.add(e.block);
   el.innerHTML = `<span class="muted small">${S.plan.title || "Plan"} · ${S.plan.date || ""}</span>` + blocks.map((b) =>
     `<button class="blk ${S.block && S.block.id === b.id ? "on" : ""} ${S.blocksDone.has(b.id) ? "done" : ""}" data-block="${b.id}">
       <b>${b.name}</b><span>${blockDesc(b)}</span></button>`).join("") +
-    (S.block ? `<span id="blocktimer" class="blocktimer"></span><button id="stopblock">Avslutt blokk</button>` : "");
+    (S.block ? `<span id="blocktimer" class="blocktimer"></span>${S.mode === "slow" ? "" : `<button id="pauseblock">${S.block.pausedAt ? "Fortsett" : "Pause"}</button>`}<button id="stopblock">Avslutt blokk</button>` : "");
 }
 
 function blockDesc(b) {
@@ -355,23 +364,46 @@ function startBlock(id) {
   blockTick();
 }
 
+const mmss = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
+
 function blockTick() {
   if (!S.block) return;
-  const left = S.block.end - performance.now();
+  const now = S.block.pausedAt || performance.now();
+  const left = S.block.end - now;
   const el = $("blocktimer");
   const q = S.mode === "recap" || (S.mode === "guided" && S.baseMode === "recap") ? S.recap : S.rad;
   if (el && S.block.solves && !isFinite(left)) el.textContent = `${S.block.doneSolves}/${S.block.solves}`;
-  else if (el) el.textContent = !isFinite(left) ? `${Math.min(q.idx + 1, q.queue.length)}/${q.queue.length}` : left > 0 ? `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, "0")}` : "0:00";
-  // Tiden ute: blokken avsluttes når casen du står i er ferdig (eller med en gang hvis du ikke har startet den).
+  else if (el) {
+    el.textContent = (S.block.pausedAt ? "⏸ " : "") + (!isFinite(left) ? `${Math.min(q.idx + 1, q.queue.length)}/${q.queue.length}` : left > 0 ? mmss(left) : "+" + mmss(-left));
+    el.classList.toggle("over", isFinite(left) && left <= 0);
+  }
+  // Tiden ute: blokken fortsetter på overtid (vises som +m:ss) til du trykker «Avslutt blokk».
+  // Slow solve med tidsgrense avsluttes som før (kuben skal være klar for neste blokk).
   if (left <= 0 && !S.block.warned) {
     S.block.warned = true;
     beep(3);
-    flash("Tiden er ute");
-    if (["result", "predict", "recog", "review", "idle", "pause"].includes(S.phase) || (S.phase === "case" && S.cur && S.cur.execStart == null)
-      || (S.mode === "slow" && ["scramble", "needcross"].includes(S.slow.phase))) endBlock();
+    flash("Tiden er ute – fortsett eller avslutt");
+    if (S.mode === "slow" && ["scramble", "needcross"].includes(S.slow.phase)) endBlock();
   }
   clearTimeout(blockTick.t);
   blockTick.t = setTimeout(blockTick, 250);
+}
+
+// Pause: klokka står, trekk ignoreres (ikke i slow solve – der må kuben spores hele tiden).
+// Ved fortsett startes casen du sto i på nytt, så pausen ikke havner i gjenkjenningstiden.
+function togglePause() {
+  if (!S.block || S.mode === "slow") return;
+  if (S.block.pausedAt) {
+    S.block.end += performance.now() - S.block.pausedAt;
+    S.block.pausedAt = null;
+    flash("Fortsetter");
+    if (S.phase === "case" && S.cur) startCase(true);
+  } else {
+    S.block.pausedAt = performance.now();
+    flash("Pause");
+  }
+  renderPlan();
+  blockTick();
 }
 
 function endBlock() {
@@ -624,6 +656,7 @@ function flash(text) {
 // ---------- trekk inn ----------
 function onMove(face, a) {
   if (S.trainer === "pll") { PLL.onMove(face, a); return; }
+  if (S.block && S.block.pausedAt && S.mode !== "slow") return;
   const now = performance.now();
   if (S.mode === "slow") { slowMove(face, a, now); return; }
   if (S.mode === "predict") { if (S.phase === "predict" && face === "D") predictAnswer(a === 1); return; }
@@ -1171,6 +1204,7 @@ function bind() {
   $("sel-asker").addEventListener("click", () => { S.selection = new Set(DEFAULT_SELECTION); renderPicker(); if (S.phase === "idle") startCase(); else render(); });
   $("planbar").addEventListener("click", (e) => {
     if (e.target.closest("#stopblock")) { endBlock(); return; }
+    if (e.target.closest("#pauseblock")) { togglePause(); return; }
     const b = e.target.closest("[data-block]"); if (b) startBlock(b.dataset.block);
   });
   onStatus((st, n) => {
