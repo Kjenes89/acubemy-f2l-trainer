@@ -863,7 +863,7 @@ function slowCheck(now) {
       return;
     } else if (r.verdict === "ok") { W.note = { cls: "ok", text: `✓ F2L ${r.n} · ${r.held}` }; flash(`✓ ${r.n} ${r.held}`); }
     else if (r.verdict === "ikke-avtalt") {
-      W.note = { cls: "warn", text: `F2L ${r.n} i ${r.held || "?"}: ingen avtalt løsning der${r.hint ? ` – avtalt: ${r.hint.rot ? r.hint.rot + " + " : ""}${r.hint.alg} (${r.hint.held})` : ""}` };
+      W.note = { cls: "warn", text: `F2L ${r.n} løst i ${r.held || "?"} – i ${r.held || "det sporet"} har vi ikke avtalt noen løsning (ingen alarm).${r.hint ? ` Avtalt: ${r.hint.rot ? `roter ${r.hint.rot} så paret står i ${r.hint.held}, og gjør ` : `i ${r.hint.held}: `}${r.hint.alg}` : ""}` };
     } else W.note = { cls: "muted", text: "Paret sto ikke som en av de 41 casene – ikke vurdert" };
     slowResetSeg(now);
   }
