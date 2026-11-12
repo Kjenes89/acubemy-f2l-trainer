@@ -57,6 +57,11 @@ export function variant(n, slot) {
 
 export const CASE_BY_N = Object.fromEntries(CASES.map((c) => [c.n, c]));
 
+// Innført med avtalt løsning (Notion «F2L-prioritering»: blokk 1–4, bokbytte 31.10. for 10 og 14, 12 til bok 12.11.,
+// og caser der bokas løsning allerede brukes nesten alltid: 3, 4, 19, 20, 21, 22, 23). Slow solve gir alarm for disse.
+// Ikke med (egen løsning er lov til det er bestemt): 1, 2, 5, 11, 13, 15, 25–30, 34, 37–41.
+export const INTRODUCED = [3, 4, 6, 7, 8, 9, 10, 12, 14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 31, 32, 33, 35, 36];
+
 // Konsolideringen før Asker (Notion 9.11.): 7, 8, 9, 16, 33.
 export const DEFAULT_SELECTION = [7, 8, 9, 16, 33];
 

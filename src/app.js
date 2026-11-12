@@ -1,6 +1,6 @@
 import { SOLVED, turn, f2lSolved } from "./cube.js";
 import { expand, invert, simplify, heldNotation, gripNotation, yNeeded, START_GRIP } from "./alg.js";
-import { CASES, CASE_BY_N, DEFAULT_SELECTION, LL_SCRAMBLERS, SLOTS, variant } from "./cases.js";
+import { CASES, CASE_BY_N, DEFAULT_SELECTION, LL_SCRAMBLERS, SLOTS, variant, INTRODUCED } from "./cases.js";
 import { cubeSvg } from "./view.js";
 import { log, flush, onStatus, LOG_URL } from "./log.js";
 import { Tracker, withPreAuf, sameSolution, didInYourGrip } from "./solve.js";
@@ -753,11 +753,11 @@ function slowCheck(now) {
     log({ block: S.block ? S.block.id : null, trainer: "f2l", mode: "slowsolve", solve: W.no, case: r.n ?? null, slot: r.held || null,
       ok: r.verdict === "ok", verdict: r.verdict, rec: rec != null ? Math.round(rec) : null, exec: exec != null ? Math.round(exec) : null,
       did: r.did, alg: r.alg || (r.hint && r.hint.alg) || null });
-    // Alarm bare for caser i utvalget (det vi trener nå). Andre caser logges, men gir ingen alarm.
-    const inSel = r.n != null && S.selection.has(r.n);
+    // Alarm for alle innførte caser (og det du har valgt). Caser uten bestemt løsning logges uten alarm.
+    const inSel = r.n != null && (INTRODUCED.includes(r.n) || S.selection.has(r.n));
     if (r.verdict === "feil" && !inSel) {
       W.pairs[W.pairs.length - 1].verdict = "utenfor";
-      W.note = { cls: "muted", text: `F2L ${r.n} (${r.held}) – ikke i utvalget, ingen alarm. Avtalt: ${r.alg}` };
+      W.note = { cls: "muted", text: `F2L ${r.n} (${r.held}) – ikke innført ennå, ingen alarm. Bokas: ${r.alg}` };
     } else if (r.verdict === "feil") {
       beep(2);
       W.phase = "correct"; W.wrong = r;
@@ -822,7 +822,7 @@ function slowPanel() {
     const left = items.filter((m) => !m.corr).length;
     const doneN = W.scramble.length - left;
     const firstOpen = items.findIndex((m) => !m.corr);
-    return `<div class="hint">Scramble ${W.no} – hold <b>hvit ned, grønn foran</b> · krysset står${W.target ? " · én av casene i utvalget er med" : ""}</div>
+    return `<div class="hint">Scramble ${W.no} – hold <b>hvit ned, grønn foran</b> · krysset står${W.target ? " · én av fokuscasene (utvalget i «Caser») er med" : ""}</div>
       <div class="scr">${chips(W.scramble.slice(0, Math.max(0, doneN)).map(heldName), "done")}${items.map((m, i) => `<span class="mv ${m.corr ? "bad" : i === firstOpen ? "now" : ""}">${heldName(m)}</span>`).join("")}</div>
       ${items.some((m) => m.corr) ? `<div class="slowbad small">Rødt = rett opp først</div>` : ""}
       ${last}${W.last ? `<div class="pps">${W.last.pairs.map(pairChip).join("")}</div>` : ""}`;
