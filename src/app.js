@@ -3,7 +3,7 @@ import { expand, invert, simplify, heldNotation, gripNotation, yNeeded, START_GR
 import { CASES, CASE_BY_N, DEFAULT_SELECTION, LL_SCRAMBLERS, SLOTS, variant, INTRODUCED } from "./cases.js";
 import { cubeSvg } from "./view.js";
 import * as PLL from "./pll.js";
-import { log, flush, onStatus, LOG_URL } from "./log.js";
+import { log, flush, onStatus, LOG_URL, setPin, hasPin } from "./log.js";
 import { Tracker, withPreAuf, sameSolution, didInYourGrip } from "./solve.js";
 import { judgePair, crossSolved, solvedSlots, makeCrossScramble, makeTargetScramble, moveName, heldName, SENSOR_SLOTS } from "./slowsolve.js";
 
@@ -1169,7 +1169,22 @@ function bind() {
     if (e.target.closest("#stopblock")) { endBlock(); return; }
     const b = e.target.closest("[data-block]"); if (b) startBlock(b.dataset.block);
   });
-  onStatus((st, n) => { $("logstatus").textContent = `Logg: ${st}${n ? ` (${n} venter)` : ""}`; });
+  onStatus((st, n) => {
+    $("logstatus").textContent = `Logg: ${st}${n ? ` (${n} venter)` : ""}`;
+    $("pinbox").hidden = hasPin();
+    if (!hasPin() && st.startsWith("feil kode")) $("pinmsg").textContent = "Feil kode – skriv den på nytt";
+  });
+  // Loggkoden: skrives inn ved hver oppstart (sandkassen kan ikke lagre den). Uten kode lagres ingenting.
+  const tryPin = async () => {
+    const code = $("pin").value.trim();
+    if (!code) return;
+    $("pinmsg").textContent = "sjekker …";
+    const r = await setPin(code);
+    $("pinmsg").textContent = r.ok ? "" : r.error;
+    if (r.ok) { $("pin").value = ""; $("pin").blur(); flash("Logging på"); }
+  };
+  $("pin-ok").addEventListener("click", tryPin);
+  $("pin").addEventListener("keydown", (e) => { if (e.key === "Enter") tryPin(); });
   $("calib").addEventListener("click", () => { if (window.acubemy) acubemy.calibrateGyro(); });
   $("skip").addEventListener("click", () => { if (S.mode === "slow") { slowNewScramble(); render(); } else shortcut("next"); });
   num("slow-end", (v) => { S.slow.end = v; });

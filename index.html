@@ -11,6 +11,7 @@
   <h1>Smartkube-trener</h1>
   <div class="seg" id="trainer-switch"><button data-trainer="f2l" class="on">F2L</button><button data-trainer="pll">PLL</button></div>
   <span id="device" class="warn">Venter på acubemy …</span>
+  <span id="pinbox" class="chk"><input id="pin" type="password" placeholder="Loggkode" size="10" autocomplete="off"><button id="pin-ok">Logg inn</button><span id="pinmsg" class="small"></span></span>
 </header>
 
 <div id="planbar" class="planbar" hidden></div>
@@ -128,7 +129,7 @@
 <p class="muted small">PLL: casen lages på skjermen med tilfeldig pre- og post-AUF. Hold hvit ned og grønn foran. Bare algoritmen din godtas, med rotasjonene i den (x/y i A, E og V). Tiden stopper når kuben er helt løst, altså etter post-AUF. Gjenkjenning trenes i PLL-recognition-appen. I casen: gul U4 = kalibrer gyro. I resultatet: U = videre · rød L4 = gjenta.</p>
 </div>
 
-<footer class="muted small"><span id="logstatus"></span><br>Snarveier (fire like trekk) under casen: gul U4 = kalibrer gyro · hvit D4 = samme case igjen · oransje R4 = guidet av/på · rød L4 = neste case. I resultatvinduet: U = videre · rød L4 = gjenta · oransje R4 = guidet<br>M3.0 · Slow solve: scramble med løst kryss på den fysiske kuben (hvit ned), løs F2L – hvert F2L-par vurderes mot avtalt løsning (gul U4 = kalibrer gyro) · øvrige moduser: casen lages på skjermen og trekkene dine brukes på den – den fysiske kuben trenger ikke stå i noen bestemt tilstand · hold grønn foran og hvit ned, og se på skjermen · algoritmene vises som i boka, og rotasjonene må gjøres (kontrolleres med gyroen)</footer>
+<footer class="muted small"><span id="logstatus"></span><br>Snarveier (fire like trekk) under casen: gul U4 = kalibrer gyro · hvit D4 = samme case igjen · oransje R4 = guidet av/på · rød L4 = neste case. I resultatvinduet: U = videre · rød L4 = gjenta · oransje R4 = guidet<br>M3.1 · loggkode påkrevd · Slow solve: scramble med løst kryss på den fysiske kuben (hvit ned), løs F2L – hvert F2L-par vurderes mot avtalt løsning (gul U4 = kalibrer gyro) · øvrige moduser: casen lages på skjermen og trekkene dine brukes på den – den fysiske kuben trenger ikke stå i noen bestemt tilstand · hold grønn foran og hvit ned, og se på skjermen · algoritmene vises som i boka, og rotasjonene må gjøres (kontrolleres med gyroen)</footer>
 
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }</script>
 <script src="https://cdn.jsdelivr.net/gh/acubemy/plugin-sdk@1/v1.js"></script>
