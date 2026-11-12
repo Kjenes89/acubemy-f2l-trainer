@@ -1,6 +1,6 @@
 import { SOLVED, turn, f2lSolved } from "./cube.js";
 import { expand, invert, simplify, heldNotation, gripNotation, yNeeded, START_GRIP } from "./alg.js";
-import { CASES, CASE_BY_N, DEFAULT_SELECTION, LL_SCRAMBLERS, SLOTS, variant, INTRODUCED } from "./cases.js";
+import { CASES, CASE_BY_N, DEFAULT_SELECTION, LL_SCRAMBLERS, SLOTS, variant, INTRODUCED, isSolveLocked } from "./cases.js";
 import { cubeSvg } from "./view.js";
 import * as PLL from "./pll.js";
 import { log, flush, onStatus, LOG_URL, setPin, hasPin } from "./log.js";
@@ -865,7 +865,7 @@ function slowCheck(now) {
       ok: r.verdict === "ok", verdict: r.verdict, rec: rec != null ? Math.round(rec) : null, exec: exec != null ? Math.round(exec) : null,
       did: r.did, alg: r.verdict === "ikke-avtalt" ? null : r.alg || null, grip: gs ? gs.D + gs.F : null });
     // Alarm for alle innførte caser (og det du har valgt). Caser uten bestemt løsning logges uten alarm.
-    const inSel = r.n != null && (INTRODUCED.includes(r.n) || S.selection.has(r.n));
+    const inSel = r.n != null && (INTRODUCED.includes(r.n) || S.selection.has(r.n) || isSolveLocked(r.n, r.held));
     if (r.verdict === "feil" && !inSel) {
       W.pairs[W.pairs.length - 1].verdict = "utenfor";
       W.note = { cls: "muted", text: `F2L ${r.n} (${r.held}) – ikke innført ennå, ingen alarm. Bokas: ${r.alg}` };

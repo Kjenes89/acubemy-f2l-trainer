@@ -162,6 +162,7 @@ export function judgePair({ start, moves, slot, startGrip = null }) {
     if (moves[k].face !== "D" && crossSolved(states[k]) && caseOf(states[k], slot) != null) j = k;
   }
   if (j < 0) return { verdict: "ikke-vurdert" };
+  const heldAt = (k) => new Set([...gripsOf(moves[k]), ...(gripsOf(moves[k]).length ? [] : [startGrip])].map((g) => heldSlot(slot, g)).filter(Boolean));
   const candGrips = (k) => withY([startGrip, ...moves.slice(0, k + 1).flatMap(gripsOf)]);
   const optionsFor = (n, g) => {
     const held = heldSlot(slot, g);
@@ -176,6 +177,7 @@ export function judgePair({ start, moves, slot, startGrip = null }) {
     for (const g of candGrips(j)) {
       const { held, algs } = optionsFor(n, g);
       for (const a of algs) {
+        if (!strictGrip(a) && !heldAt(j).has(held)) continue; // brede trekk: grepet kontrolleres ikke trekk for trekk, så sporet må være det du faktisk holdt
         if (sameSolution(moves.slice(j), expand(a, g).moves, { strictGrip: strictGrip(a) })) return { verdict: "ok", n, held, alg: a, from: j, copy: !optionsFor(n, g).v || undefined };
       }
     }
@@ -193,6 +195,7 @@ export function judgePair({ start, moves, slot, startGrip = null }) {
     for (const g of candGrips(k)) {
       const { held, algs } = optionsFor(nk, g);
       for (const a of algs) {
+        if (!strictGrip(a) && !heldAt(k).has(held)) continue;
         if (sameSolution(moves.slice(k), expand(a, g).moves, { strictGrip: strictGrip(a) })) return { verdict: "ok", n: nk, held, alg: a, from: k, multislot: nk !== n ? n : undefined };
       }
     }
