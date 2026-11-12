@@ -163,7 +163,12 @@ export function judgePair({ start, moves, slot, startGrip = null }) {
   }
   if (j < 0) return { verdict: "ikke-vurdert" };
   // Det du gjorde fra casens start, slik gyroen leste grepet (vises og logges også for riktige par).
-  const didFrom = (k) => didInYourGrip(moves.slice(k), gripsOf(moves[k])[0] || startGrip || START_GRIP);
+  // Rotasjon fra segmentets start (forrige par satt inn) til første trekk i casen vises først, i hakeparentes.
+  const didFrom = (k) => {
+    const g0 = gripsOf(moves[k])[0] || startGrip || START_GRIP;
+    const pre = startGrip && g0 ? yNeeded(startGrip, g0) : "";
+    return (pre ? `[${pre}] ` : pre == null ? "[(rotert)] " : "") + didInYourGrip(moves.slice(k), g0);
+  };
   const heldAt = (k) => new Set([...gripsOf(moves[k]), ...(gripsOf(moves[k]).length ? [] : [startGrip])].map((g) => heldSlot(slot, g)).filter(Boolean));
   const candGrips = (k) => withY([startGrip, ...moves.slice(0, k + 1).flatMap(gripsOf)]);
   const optionsFor = (n, g) => {
@@ -205,7 +210,7 @@ export function judgePair({ start, moves, slot, startGrip = null }) {
     }
   }
   const gripAtJ = gripsOf(moves[j])[0] || startGrip;
-  const did = didInYourGrip(moves.slice(j), gripAtJ || START_GRIP);
+  const did = didFrom(j);
   const undo = simplify(invert(moves.slice(j)));
   // Sporet er det du holdt kuben i ved første trekk i casen. Feil bare når det finnes en avtalt løsning der;
   // ellers ikke avtalt – med forslag (rotasjon + avtalt løsning), men uten alarm. (Før ble også grep fra
