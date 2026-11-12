@@ -167,7 +167,7 @@ export function judgePair({ start, moves, slot, startGrip = null }) {
   const optionsFor = (n, g) => {
     const held = heldSlot(slot, g);
     const v = held && variant(n, held);
-    if (v) return { held, v, algs: [v.alg, ...(v.alts || [])] };
+    if (v) return { held, v, algs: [v.alg, ...(v.alts || [])], loose: !!v.loose };
     // Uten egen sporløsning: FR-løsningen flyttet til sporet (samme trekk sett fra sporet, f.eks. 1 i BL =
     // U L U' L') godkjennes som riktig, men gir ingen alarm (v = null). Jf. «én løsning per case, alle spor» 31.10.
     return { held, v: null, algs: held ? slotCopies(n, held) : [], copy: true };
@@ -177,8 +177,9 @@ export function judgePair({ start, moves, slot, startGrip = null }) {
     for (const g of candGrips(j)) {
       const { held, algs } = optionsFor(n, g);
       for (const a of algs) {
-        if (!strictGrip(a) && !heldAt(j).has(held)) continue; // brede trekk: grepet kontrolleres ikke trekk for trekk, så sporet må være det du faktisk holdt
-        if (sameSolution(moves.slice(j), expand(a, g).moves, { strictGrip: strictGrip(a) })) return { verdict: "ok", n, held, alg: a, from: j, copy: !optionsFor(n, g).v || undefined };
+        const strict = strictGrip(a) && !optionsFor(n, g).loose; // egne løsninger med fri rotasjon: bare resultatet teller
+        if (!strict && !heldAt(j).has(held)) continue; // grepet kontrolleres ikke trekk for trekk, så sporet må være det du faktisk holdt
+        if (sameSolution(moves.slice(j), expand(a, g).moves, { strictGrip: strict })) return { verdict: "ok", n, held, alg: a, from: j, copy: !optionsFor(n, g).v || undefined };
       }
     }
   }
@@ -195,8 +196,9 @@ export function judgePair({ start, moves, slot, startGrip = null }) {
     for (const g of candGrips(k)) {
       const { held, algs } = optionsFor(nk, g);
       for (const a of algs) {
-        if (!strictGrip(a) && !heldAt(k).has(held)) continue;
-        if (sameSolution(moves.slice(k), expand(a, g).moves, { strictGrip: strictGrip(a) })) return { verdict: "ok", n: nk, held, alg: a, from: k, multislot: nk !== n ? n : undefined };
+        const strict = strictGrip(a) && !optionsFor(nk, g).loose;
+        if (!strict && !heldAt(k).has(held)) continue;
+        if (sameSolution(moves.slice(k), expand(a, g).moves, { strictGrip: strict })) return { verdict: "ok", n: nk, held, alg: a, from: k, multislot: nk !== n ? n : undefined };
       }
     }
   }

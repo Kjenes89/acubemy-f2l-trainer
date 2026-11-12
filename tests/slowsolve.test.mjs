@@ -170,6 +170,18 @@ check(tested6 > 10, `uttak testet ${tested6}`);
   check(r1.verdict === "ok" && r1.n === 1 && r1.held === "BL", `1 i BL: ${JSON.stringify(r1)}`);
 }
 
+// 6e) Egne løsninger med fri rotasjon (12 BR): B U B' og y' L U L' til slutt godtas begge, også i BR fra start.
+{
+  const { heldSlot: hs } = await import("../src/slowsolve.js");
+  const sensorBR = ["FR", "FL", "BR", "BL"].find((s) => hs(s, START_GRIP) === "BR");
+  for (const a of ["U R' U2 R U' B U B'", "U R' U2 R U' y' L U L'"]) {
+    const mv = withG(expand(a, START_GRIP).moves);
+    const st = applyMoves(SOLVED, invert(mv));
+    const r = judgePair({ start: st, moves: mv, slot: sensorBR, startGrip: START_GRIP });
+    check(r.verdict === "ok" && r.n === 12 && r.held === "BR", `12 BR ${a}: ${JSON.stringify(r)}`);
+  }
+}
+
 // 7) Kryss og scramble.
 check(crossSolved(SOLVED) && !crossSolved(turn(SOLVED, "F", 1)) && crossSolved(turn(SOLVED, "D", 1)), "kryss");
 // Scramblene: krysset står alltid; målscramblen gir riktig case i riktig spor, også fra F2L-løst med uløst siste lag.

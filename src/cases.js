@@ -58,6 +58,9 @@ Object.assign(SLOT_ALGS.BR, {"2": "U' R' U R", "3": "R' U' R", "4": "B U B'", "6
 // Unntak (Vegard 12.11. 21:15): der boka bruker brede trekk (1 FL F' r U r', 3 BL f' L' f, 4 BR f R f', 12 BR
 // … f R f', 15 BR … f R f'), gjør Vegard samme resultat med vanlige flatetrekk (B' U' B osv., sett i eksporten).
 // Det er ikke bokas utførelse; her står hans egen. Bokas versjon (antakelig valgt for fingertricks) testes etter Asker.
+// For disse fem er det resultatet som er låst, ikke rotasjonen: eksporten viser både B U B' og varianter med
+// rotasjon midt i (f.eks. «B d L'» = B U y' L', og y' L U L' i slow solve 12.11. 21:26). Alle godtas.
+export const OWN_LOOSE = { FL: [1], BL: [3], BR: [4, 12, 15] };
 export const SOLVE_LOCKED = {"FR": [1, 2, 3, 4, 5, 7, 14, 16, 17, 19, 20, 21, 22, 23, 27, 28, 34, 38], "FL": [1, 2, 3, 4, 6, 8, 13, 18, 20, 22, 24, 33, 34], "BL": [1, 3, 4, 5, 7, 14, 17, 19, 21, 23, 25, 27, 33], "BR": [2, 3, 4, 6, 12, 13, 15, 18, 20, 22]};
 export const isSolveLocked = (n, slot) => !!(SOLVE_LOCKED[slot] && SOLVE_LOCKED[slot].includes(n));
 
@@ -66,7 +69,8 @@ export function variant(n, slot) {
   const c = CASES.find((x) => x.n === n);
   if (slot === "FR") return { ...c, slot, key: String(n) };
   const alg = SLOT_ALGS[slot] && SLOT_ALGS[slot][n];
-  return alg ? { ...c, alg, alts: [], source: "spor", slot, key: `${n}@${slot}` } : null;
+  const loose = !!(OWN_LOOSE[slot] && OWN_LOOSE[slot].includes(n));
+  return alg ? { ...c, alg, alts: [], source: loose ? "egen" : "spor", loose, slot, key: `${n}@${slot}` } : null;
 }
 
 export const CASE_BY_N = Object.fromEntries(CASES.map((c) => [c.n, c]));
