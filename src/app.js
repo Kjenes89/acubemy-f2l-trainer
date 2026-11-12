@@ -5,7 +5,7 @@ import { cubeSvg } from "./view.js";
 import * as PLL from "./pll.js";
 import { log, flush, onStatus, LOG_URL, setPin, hasPin } from "./log.js";
 import { Tracker, withPreAuf, sameSolution, didInYourGrip } from "./solve.js";
-import { judgePair, crossSolved, solvedSlots, makeCrossScramble, makeTargetScramble, moveName, heldName, SENSOR_SLOTS } from "./slowsolve.js";
+import { judgePair, crossSolved, solvedSlots, makeCrossScramble, makeTargetScramble, moveName, heldName, SENSOR_SLOTS, heldSlot } from "./slowsolve.js";
 
 let view3d = null;
 const dimNow = () => S.trainer === "f2l" && S.mode !== "slow"; // slow solve og PLL viser hele kuben
@@ -767,7 +767,10 @@ function slowNewScramble() {
   const pool = CASES.map((c) => c.n).filter((n) => S.selection.has(n));
   const choices = pool.length > 1 ? pool.filter((n) => n !== (W.target && W.target.n)) : pool;
   if (f2lSolved(S.facelets) && choices.length) {
-    const n = choices[rnd(choices.length)], slot = SENSOR_SLOTS[rnd(4)];
+    // Målcasen legges i et spor der den har avtalt løsning (sett fra startgrepet), så den faktisk blir vurdert.
+    const n = choices[rnd(choices.length)];
+    const ok = SENSOR_SLOTS.filter((sl) => variant(n, heldSlot(sl, START_GRIP)));
+    const slot = ok.length ? ok[rnd(ok.length)] : SENSOR_SLOTS[rnd(4)];
     W.target = { n, slot };
     W.scramble = makeTargetScramble(n, slot);
   } else {
