@@ -1116,7 +1116,8 @@ function bind() {
   document.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => {
     const m = b.dataset.mode;
     if (m === S.mode) return;
-    if (m === "guided") toggleGuided(); else setMode(m);
+    // Fra guidet tilbake til samme modus = ut av guidet: samme case igjen, nå uten hjelp.
+    if (m === "guided" || (S.mode === "guided" && m === S.baseMode)) toggleGuided(); else setMode(m);
   }));
   const num = (id, fn) => $(id).addEventListener("change", (e) => { fn(e.target.type === "checkbox" ? e.target.checked : e.target.value); render(); });
   num("learn-th", (v) => { S.learn.threshold = +v; learnInit(); });
