@@ -87,6 +87,34 @@ for (const c of CASES.filter((x) => x.n <= 36)) for (let d = 0; d < 4; d++) {
 }
 check(tested6 > 10, `uttak testet ${tested6}`);
 
+// 6b) Multislotting: R U R' i BR (rører ikke FL-paret) før avtalt løsning → ok. 9 med gammel løsning → fortsatt feil.
+{
+  let tested = 0;
+  for (const c of CASES.filter((x) => x.n <= 36)) {
+    const caseState = applyMoves(SOLVED, invert(expand(c.alg).moves));
+    const other = withG(expand("y2 R U R'").moves.map((m) => ({ ...m, grip: START_GRIP })));
+    const mid = applyMoves(caseState, other);
+    if (caseOf(mid, "FL") !== c.n || !crossSolved(mid)) continue;
+    tested++;
+    const all = [...other, ...withG(expand(c.alg).moves)];
+    const nw = newly(caseState, applyMoves(caseState, all));
+    const r = judgePair({ start: caseState, moves: all, slot: "FL", startGrip: START_GRIP });
+    check(r.verdict === "ok" && r.n === c.n, `multislot + ${c.n}: ${JSON.stringify(r)} ${nw}`);
+  }
+  check(tested >= 3, `multislot testet ${tested}`);
+  const st9 = applyMoves(SOLVED, invert(expand(CASE_BY_N[9].alg).moves));
+  let ran9 = 0;
+  for (const pre of ["", "U ", "U2 ", "U' "]) {
+    const mv = withG(expand(pre + "R U' R' U y' R' U' R").moves);
+    const end = applyMoves(st9, mv);
+    if (!solvedSlots(end).has("FL")) continue;
+    const r = judgePair({ start: st9, moves: mv, slot: "FL", startGrip: START_GRIP });
+    ran9++;
+    check(r.verdict === "feil" && r.n === 9, `9 gammel løsning: ${JSON.stringify(r)}`);
+  }
+  check(ran9 > 0, "9 gammel løsning testet");
+}
+
 // 7) Kryss og scramble.
 check(crossSolved(SOLVED) && !crossSolved(turn(SOLVED, "F", 1)) && crossSolved(turn(SOLVED, "D", 1)), "kryss");
 // Scramblene: krysset står alltid; målscramblen gir riktig case i riktig spor, også fra F2L-løst med uløst siste lag.

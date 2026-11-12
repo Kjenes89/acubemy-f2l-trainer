@@ -803,6 +803,9 @@ function slowMove(face, a, now) {
       slowResetSeg(now);
       if (W.guideAfter) { W.guideAfter = false; slowStartGuide(); } else flash("Prøv igjen");
     }
+  } else if (W.phase === "back") {
+    W.corr.step(face, a);
+    if (!W.corr.items.length) slowBackDone(now);
   } else if (W.phase === "guide") {
     W.guide.step(face, a, mv.grip);
     if (!W.guide.items.length) slowEndGuide(now);
@@ -894,7 +897,7 @@ function slowStartGuide() {
     const seq = k ? [{ face: "D", amt: k, auf: true }, ...rest] : rest;
     for (const m of seq) f = turn(f, m.face, m.amt);
     if (crossSolved(f) && solvedSlots(f).has(r.slot)) {
-      W.guide = new Tracker(seq); W.guideCase = r; W.phase = "guide"; W.retry = null;
+      W.guide = new Tracker(seq); W.guideSeq = seq; W.guideCase = r; W.phase = "guide"; W.retry = null;
       flash("Guidet – følg trekkene");
       return;
     }
@@ -904,11 +907,28 @@ function slowStartGuide() {
 function slowEndGuide(now) {
   const W = S.slow, r = W.guideCase;
   log({ block: S.block ? S.block.id : null, trainer: "f2l", mode: "guided", solve: W.no, case: r.n, slot: r.held, ok: true, alg: r.alg });
-  W.phase = "solve"; W.guide = null; W.guideCase = null;
-  W.note = { cls: "warn", text: `F2L ${r.n} (${r.held}) guidet – teller ikke. Avtalt: ${r.alg}` };
-  W.solved = solvedSlots(S.facelets);
+  // Tilbake til casen, så du kan ta den guidet igjen (R4) eller prøve uten guide. «Hopp over» fortsetter solven.
+  W.phase = "back"; W.guide = null; W.backCase = r;
+  W.corr = new Tracker(simplify(invert(W.guideSeq.map((m) => ({ face: m.face, amt: m.amt })))));
+  W.note = null;
+}
+function slowBackDone(now) {
+  const W = S.slow;
+  W.retry = W.backCase; W.backCase = null; W.corr = null; W.guideCase = null;
+  W.phase = "solve"; W.solved = solvedSlots(S.facelets);
   slowResetSeg(now);
-  slowCheck(now);
+  flash("Prøv uten guide");
+}
+function slowSkipBack() {
+  const W = S.slow;
+  if (W.phase !== "back") return;
+  const r = W.backCase;
+  W.backCase = null; W.corr = null; W.guideCase = null; W.retry = null;
+  W.phase = "solve"; W.solved = solvedSlots(S.facelets);
+  W.note = { cls: "warn", text: `F2L ${r.n} (${r.held}) guidet – teller ikke. Avtalt: ${r.alg}` };
+  slowResetSeg(performance.now());
+  slowCheck(performance.now());
+  render();
 }
 function slowSkipCorr() {
   const W = S.slow;
@@ -961,6 +981,13 @@ function slowPanel() {
       <div class="scr">${W.corr.items.map((m) => `<span class="mv bad">${gripNotation(m, g)}</span>`).join("")}</div>
       <div>Så avtalt løsning (${r.held}): <b class="mono">${r.alg}</b></div>
       <button id="slow-skipcorr">Hopp over</button> <button id="slow-guideafter" class="${W.guideAfter ? "on" : ""}">${W.guideAfter ? "Guidet etter retting ✓" : "Guidet etter retting"}</button>${pairs}`;
+  }
+  if (W.phase === "back" && W.backCase) {
+    const r = W.backCase, g = liveGrip() || START_GRIP;
+    return `<div class="okline big">Guidet ferdig – F2L ${r.n} i ${r.held}</div>
+      <div class="hint">Tilbake til casen, så kan du ta den guidet igjen (oransje R4) eller prøve uten guide:</div>
+      <div class="scr">${W.corr.items.map((m, i) => `<span class="mv ${m.corr ? "bad" : i === 0 ? "now" : ""}">${gripNotation(m, g)}</span>`).join("")}</div>
+      <button id="slow-skipback">Hopp over – fortsett solven</button>${pairs}`;
   }
   if (W.phase === "guide" && W.guide) {
     const r = W.guideCase, g = liveGrip() || START_GRIP, items = W.guide.items, head = items[0];
@@ -1170,6 +1197,7 @@ function render() {
   document.querySelector('[data-mode="guided"]').disabled = S.mode === "recog" || S.mode === "predict" || S.mode === "slow";
   if ($("slow-skipcorr")) $("slow-skipcorr").onclick = slowSkipCorr;
   if ($("slow-guideafter")) $("slow-guideafter").onclick = () => { S.slow.guideAfter = !S.slow.guideAfter; render(); };
+  if ($("slow-skipback")) $("slow-skipback").onclick = slowSkipBack;
   if ($("slow-guide")) $("slow-guide").onclick = () => { slowStartGuide(); render(); };
   if ($("p-yes")) { $("p-yes").onclick = () => predictAnswer(true); $("p-no").onclick = () => predictAnswer(false); }
   if ($("rv-play")) { $("rv-play").onclick = reviewPlay; $("rv-prev").onclick = () => reviewShow(-1); $("rv-next").onclick = () => reviewShow(1); $("rv-rand").onclick = () => reviewShow(0); }

@@ -162,6 +162,18 @@ export function judgePair({ start, moves, slot, startGrip = null }) {
     }
   }
   const n = caseOf(states[j], slot);
+  // Multislotting: trekk på andre par (eller en rotasjon) før innsettingen godtas, så lenge casen for dette
+  // paret er den samme der den avtalte løsningen starter. Endres casen underveis (R U R' først osv.), er det
+  // en annen løsning og fortsatt feil.
+  for (let k = j + 1; k < moves.length; k++) {
+    if (moves[k].face === "D" || !crossSolved(states[k]) || caseOf(states[k], slot) !== n) continue;
+    for (const g of candGrips(k)) {
+      const { held, algs } = optionsFor(n, g);
+      for (const a of algs) {
+        if (sameSolution(moves.slice(k), expand(a, g).moves, { strictGrip: strictGrip(a) })) return { verdict: "ok", n, held, alg: a, from: k };
+      }
+    }
+  }
   const gripAtJ = gripsOf(moves[j])[0] || startGrip;
   const did = didInYourGrip(moves.slice(j), gripAtJ || START_GRIP);
   const undo = simplify(invert(moves.slice(j)));
