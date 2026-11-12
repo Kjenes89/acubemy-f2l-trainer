@@ -301,7 +301,8 @@ async function loadHist() {
     if (r.ok) {
       const j = await r.json();
       S.hist = (j.trainers && j.trainers.f2l) || j.cases || {};
-      S.blocksEnded = j.blocksEnded || []; // avsluttede blokker fra loggen (✓ overlever omlasting)
+      S.blocksEnded = j.blocksEnded || [];
+      S.blockSolves = j.blockSolves || []; // avsluttede blokker fra loggen (✓ overlever omlasting)
       renderPlan();
     }
   } catch (e) { /* uten historikk brukes bare økta */ }
@@ -327,7 +328,7 @@ function renderPlan() {
   el.innerHTML = `<span class="muted small">${S.plan.title || "Plan"} · ${S.plan.date || ""}</span>` + blocks.map((b) =>
     `<button class="blk ${S.block && S.block.id === b.id ? "on" : ""} ${S.blocksDone.has(b.id) ? "done" : ""}" data-block="${b.id}">
       <b>${b.name}</b><span>${blockDesc(b)}</span></button>`).join("") +
-    (S.block ? `<span id="blocktimer" class="blocktimer"></span>${S.mode === "slow" ? "" : `<button id="pauseblock">${S.block.pausedAt ? "Fortsett" : "Pause"}</button>`}<button id="stopblock">Avslutt blokk</button>` : "");
+    (S.block ? `<span id="blocktimer" class="blocktimer"></span><button id="pauseblock" title="${S.mode === "slow" ? "Stopper blokkas klokke; solven du er i fortsetter" : "Klokka står og trekk ignoreres"}">${S.block.pausedAt ? "Fortsett" : "Pause"}</button><button id="stopblock">Avslutt blokk</button>` : "");
 }
 
 function blockDesc(b) {
@@ -337,6 +338,15 @@ function blockDesc(b) {
   const what = mode === "rad" ? `${b.n || 3} på rad${b.order === "weakest" || !b.order ? ", svakeste først" : b.order === "random" ? ", tilfeldig" : ""}`
     : mode === "recap" ? `recap ${b.repeat || 2}×` : MODE_NAME[mode].toLowerCase();
   return `${b.minutes ? b.minutes + " min · " : "én runde · "}${what} · ${b.cases.join(", ")}${b.slots ? " · " + b.slots.join("/") : ""}`;
+}
+
+// Slow solves i blokka på plandagen: fra loggen (lastet ved oppstart) og fra denne økta.
+function solvesDone(id) {
+  const day = (t) => new Date(t).toLocaleDateString("sv-SE", { timeZone: "Europe/Oslo" });
+  const ts = new Set();
+  for (const e of [...(S.blockSolves || []), ...(S.blockSolvesLocal || [])])
+    if (e.block === id && e.t && (!S.plan || !S.plan.date || day(e.t) === S.plan.date)) ts.add(e.t.slice(0, 19));
+  return ts.size;
 }
 
 function startBlock(id) {
@@ -357,7 +367,7 @@ function startBlock(id) {
   if (mode === "learn") { S.learn.threshold = b.threshold || S.learn.threshold; }
   setMode(mode, { start: false });
   S.block = { id: b.id, name: b.name, minutes, untilRound: oneRound, end: minutes ? performance.now() + minutes * 60000 : Infinity };
-  if (mode === "slow") { S.block.solves = b.solves || null; S.block.doneSolves = 0; if (b.solves && !b.minutes) S.block.end = Infinity; }
+  if (mode === "slow") { S.block.solves = b.solves || null; S.block.doneSolves = solvesDone(b.id); if (b.solves && !b.minutes) S.block.end = Infinity; }
   log({ event: "block-start", block: b.id, minutes: b.minutes, cases: b.cases, mode: S.mode });
   renderPlan();
   startCase();
@@ -372,7 +382,7 @@ function blockTick() {
   const left = S.block.end - now;
   const el = $("blocktimer");
   const q = S.mode === "recap" || (S.mode === "guided" && S.baseMode === "recap") ? S.recap : S.rad;
-  if (el && S.block.solves && !isFinite(left)) el.textContent = `${S.block.doneSolves}/${S.block.solves}`;
+  if (el && S.block.solves && !isFinite(left)) el.textContent = (S.block.pausedAt ? "⏸ " : "") + `${S.block.doneSolves}/${S.block.solves}`;
   else if (el) {
     el.textContent = (S.block.pausedAt ? "⏸ " : "") + (!isFinite(left) ? `${Math.min(q.idx + 1, q.queue.length)}/${q.queue.length}` : left > 0 ? mmss(left) : "+" + mmss(-left));
     el.classList.toggle("over", isFinite(left) && left <= 0);
@@ -389,15 +399,15 @@ function blockTick() {
   blockTick.t = setTimeout(blockTick, 250);
 }
 
-// Pause: klokka står, trekk ignoreres (ikke i slow solve – der må kuben spores hele tiden).
-// Ved fortsett startes casen du sto i på nytt, så pausen ikke havner i gjenkjenningstiden.
+// Pause: blokkas klokke står. I drill o.l. ignoreres trekk, og casen startes på nytt ved fortsett, så pausen
+// ikke havner i gjenkjenningstiden. I slow solve spores kuben fortsatt – solven du er i, går videre som før.
 function togglePause() {
-  if (!S.block || S.mode === "slow") return;
+  if (!S.block) return;
   if (S.block.pausedAt) {
     S.block.end += performance.now() - S.block.pausedAt;
     S.block.pausedAt = null;
     flash("Fortsetter");
-    if (S.phase === "case" && S.cur) startCase(true);
+    if (S.mode !== "slow" && S.phase === "case" && S.cur) startCase(true);
   } else {
     S.block.pausedAt = performance.now();
     flash("Pause");
@@ -822,11 +832,13 @@ function slowFinish(now) {
   const W = S.slow;
   const cnt = (v) => W.pairs.filter((p) => p.verdict === v).length;
   W.last = { no: W.no, ok: cnt("ok"), feil: cnt("feil"), na: cnt("ikke-avtalt") + cnt("utenfor"), nv: cnt("ikke-vurdert"), ms: now - W.t0, pairs: W.pairs, target: W.target };
-  log({ event: "slowsolve", trainer: "f2l", mode: "slowsolve", solve: W.no, end: W.end, scramble: W.scramble.map(heldName).join(" "), target: W.target ? W.target.n : null,
-    ok: W.last.ok, feil: W.last.feil, ikkeAvtalt: W.last.na, ikkeVurdert: W.last.nv, ms: Math.round(W.last.ms), crossMs: W.crossMs != null ? Math.round(W.crossMs) : null });
+  const rec = { event: "slowsolve", trainer: "f2l", mode: "slowsolve", block: S.block ? S.block.id : null, solve: W.no, end: W.end, scramble: W.scramble.map(heldName).join(" "), target: W.target ? W.target.n : null,
+    ok: W.last.ok, feil: W.last.feil, ikkeAvtalt: W.last.na, ikkeVurdert: W.last.nv, ms: Math.round(W.last.ms), crossMs: W.crossMs != null ? Math.round(W.crossMs) : null };
+  log(rec);
+  if (rec.block) (S.blockSolvesLocal ||= []).push({ block: rec.block, t: new Date().toISOString() });
   beep(1);
   slowNewScramble();
-  if (S.block && S.block.solves && ++S.block.doneSolves >= S.block.solves) endBlock();
+  if (S.block && S.block.solves) { S.block.doneSolves = solvesDone(S.block.id); if (S.block.doneSolves >= S.block.solves) endBlock(); }
 }
 function slowSkipCorr() {
   const W = S.slow;
