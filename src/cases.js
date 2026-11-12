@@ -21,9 +21,9 @@ const BOOK = {
   41: "F R' F' R2 U' R' U2 y' R' U' R",
 };
 const ACU2BOOK = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 7, 7: 6, 8: 8, 9: 13, 10: 14, 11: 32, 12: 31, 13: 19, 14: 18, 15: 33, 16: 34, 17: 23, 18: 24, 19: 9, 20: 11, 21: 10, 22: 12, 23: 38, 24: 39, 25: 30, 26: 29, 27: 15, 28: 17, 29: 20, 30: 16, 31: 26, 32: 25, 33: 21, 34: 22, 35: 27, 36: 28, 37: 35, 38: 37, 39: 36, 40: 40, 41: 41 };
+// 12.11.: 24, 35 og 36 tatt ut – Vegard roterer bare der boka roterer, og bokas FR-algoritmer for disse er rotasjonsfrie.
 const LOCKED = {
   6: "U F' U' F U2 F' U F", 8: "y' U R' U2 R U2 R' U R", 12: "U F' U2 F U' R U R'",
-  24: "y' U' R' U R U R' U R U' R' U R", 35: "U' R U R' U y' R' U' R", 36: "U y' R' U' R U' y R U R'",
 };
 const ALTS = { 21: ["U2 R U' R' U2 R U R'"], 22: ["U2 r U' r' U2 r U r'", "U2 F' L' U2 L F"] };
 
