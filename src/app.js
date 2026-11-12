@@ -1,6 +1,6 @@
 import { SOLVED, turn, f2lSolved } from "./cube.js";
 import { expand, invert, simplify, heldNotation, gripNotation, yNeeded, START_GRIP } from "./alg.js";
-import { CASES, CASE_BY_N, DEFAULT_SELECTION, LL_SCRAMBLERS } from "./cases.js";
+import { CASES, CASE_BY_N, DEFAULT_SELECTION, LL_SCRAMBLERS, SLOTS, variant } from "./cases.js";
 import { cubeSvg } from "./view.js";
 import { log, flush, onStatus, LOG_URL } from "./log.js";
 import { Tracker, withPreAuf, sameSolution, didInYourGrip } from "./solve.js";
@@ -38,6 +38,7 @@ const S = {
   mixLL: true,
   colorSwap: true,
   selection: new Set(DEFAULT_SELECTION),
+  slots: new Set(["FR"]), // spor casene kan komme i; bare caser med avtalt løsning i et valgt spor er med
   phase: "idle", // idle | case | result (resultatvindu; U for neste)
   cur: null,
   last: null,
@@ -63,14 +64,17 @@ function weakness(n) {
 }
 
 function buildRadQueue() {
-  const cases = CASES.map((c) => c.n).filter((n) => S.selection.has(n));
+  const cases = selected();
   if (S.rad.order === "weakest") cases.sort((a, b) => weakness(b) - weakness(a));
   else if (S.rad.order === "random") cases.sort(() => Math.random() - 0.5);
   S.rad.queue = cases; S.rad.idx = 0; S.rad.streak = 0;
 }
 
 // --- Learn (som solved): én ny case om gangen; lært når snittet av de siste N (gjenkjenning + utførelse) er under terskelen.
-const selected = () => CASES.map((c) => c.n).filter((n) => S.selection.has(n));
+const availSlots = (n) => SLOTS.filter((sl) => S.slots.has(sl) && variant(n, sl));
+const selected = () => CASES.map((c) => c.n).filter((n) => S.selection.has(n) && availSlots(n).length);
+// Casen i ett av de valgte sporene (tilfeldig blant dem som har avtalt løsning).
+function variantFor(n) { const sl = availSlots(n); return sl.length ? variant(n, sl[rnd(sl.length)]) : null; }
 function learnInit() {
   const L = S.learn;
   L.learned = new Set();
@@ -130,7 +134,7 @@ function pickWeighted() {
 }
 
 function pickCase() {
-  if (S.repeat && S.selection.has(S.repeat)) return CASE_BY_N[S.repeat];
+  if (S.repeat && selected().includes(S.repeat)) return CASE_BY_N[S.repeat];
   if (S.mode === "learn") return pickLearn();
   if (S.mode === "weighted") return pickWeighted();
   if (S.mode === "recap") {
@@ -138,10 +142,11 @@ function pickCase() {
     return S.recap.idx < S.recap.queue.length ? CASE_BY_N[S.recap.queue[S.recap.idx]] : null;
   }
   if (S.mode === "rad") {
-    if (!S.rad.queue.length || S.rad.queue.some((n) => !S.selection.has(n)) || S.rad.idx >= S.rad.queue.length) buildRadQueue();
+    const sel = selected();
+    if (!S.rad.queue.length || S.rad.queue.some((n) => !sel.includes(n)) || S.rad.idx >= S.rad.queue.length) buildRadQueue();
     return CASE_BY_N[S.rad.queue[S.rad.idx]] || null;
   }
-  const pool = [...S.selection];
+  const pool = selected();
   if (!pool.length) return null;
   // Ikke samme case som den du står i (eller sist løste) – ellers kan «neste» gi samme case om og om igjen.
   const avoid = S.cur ? S.cur.c.n : S.last ? S.last.n : null;
@@ -176,7 +181,9 @@ function startCase(sameAgain = false) {
   if (S.block && (performance.now() >= S.block.end || S.block.roundDone)) { endBlock(); return; }
   if (S.mode === "predict") { if (S.predict.sub === "review") reviewShow(0); else newPredictRound(); return; }
   if (S.mode === "recog") { newRecogRound(); return; }
-  const c = sameAgain && S.cur ? S.cur.c : pickCase();
+  const picked = sameAgain && S.cur ? S.cur.c : pickCase();
+  // Samme case igjen beholder sporet; ellers trekkes et av de valgte sporene.
+  const c = picked && (sameAgain && S.cur && S.cur.c.slot ? picked : variantFor(picked.n));
   if (!c) {
     const recapDone = S.mode === "recap" && S.recap.queue.length;
     if (recapDone && S.block) { endBlock(); return; }
@@ -217,25 +224,26 @@ function finishCase() {
   const execStart = cur.execStart ?? end;
   const rec = execStart - cur.t0;
   const exec = end - execStart;
-  const ok = [cur.c.alg, ...cur.c.alts].some((a) => sameSolution(cur.executed, expand(a).moves));
+  const strictGrip = (a) => !/[rludfbMES]|w/.test(a);
+  const ok = [cur.c.alg, ...cur.c.alts].some((a) => sameSolution(cur.executed, expand(a).moves, { strictGrip: strictGrip(a) }));
   const quarters = (ms) => simplify(ms).filter((m) => m.face !== "D").reduce((s, m) => s + (m.amt === 2 ? 2 : 1), 0);
   const rawQ = cur.executed.filter((m) => m.face !== "D").length;
   const fixed = ok && rawQ > quarters(cur.alg.moves);
   const execMoves = simplify(cur.executed.slice(cur.execIdx)).length;
   const guided = S.mode === "guided" || cur.intro;
-  const st = (S.stats[cur.c.n] ||= { reps: 0, ok: 0, exec: [], rec: [] });
+  const st = (S.stats[cur.c.key] ||= { reps: 0, ok: 0, exec: [], rec: [] });
   const prevMedian = median(st.exec);
   st.reps++;
   if (ok) { st.ok++; if (!guided) { st.exec.push(exec); st.rec.push(rec); } }
   S.attempts.count++;
   S.last = {
-    n: cur.c.n, ok, fixed, guided, rec, exec, total: rec + exec,
+    n: cur.c.n, c: cur.c, ok, fixed, guided, rec, exec, total: rec + exec,
     tps: exec > 0 ? execMoves / (exec / 1000) : 0,
     median: median(st.exec), prevMedian, attempts: S.attempts.count,
     did: didInYourGrip(cur.executed),
   };
   log({
-    block: S.block ? S.block.id : null, trainer: "f2l", case: cur.c.n, slot: "FR", mode: S.mode, intro: cur.intro || undefined,
+    block: S.block ? S.block.id : null, trainer: "f2l", case: cur.c.n, slot: cur.c.slot, mode: S.mode, intro: cur.intro || undefined,
     ok, fixed, rec: Math.round(rec), exec: Math.round(exec), tps: +S.last.tps.toFixed(2),
     did: S.last.did, alg: cur.c.alg, source: cur.c.source, auf: cur.aufAmt, colorShift: cur.colorShift || 0,
   });
@@ -310,7 +318,7 @@ function blockDesc(b) {
   const mode = MODE_NAME[b.mode] ? b.mode : "drill";
   const what = mode === "rad" ? `${b.n || 3} på rad${b.order === "weakest" || !b.order ? ", svakeste først" : b.order === "random" ? ", tilfeldig" : ""}`
     : mode === "recap" ? `recap ${b.repeat || 2}×` : MODE_NAME[mode].toLowerCase();
-  return `${b.minutes ? b.minutes + " min · " : "én runde · "}${what} · ${b.cases.join(", ")}`;
+  return `${b.minutes ? b.minutes + " min · " : "én runde · "}${what} · ${b.cases.join(", ")}${b.slots ? " · " + b.slots.join("/") : ""}`;
 }
 
 function startBlock(id) {
@@ -318,6 +326,8 @@ function startBlock(id) {
   if (!b) return;
   beep(0); // lås opp lyd (krever klikk i rammen)
   S.selection = new Set(b.cases);
+  S.slots = new Set((b.slots || ["FR"]).filter((sl) => SLOTS.includes(sl)));
+  if (!S.slots.size) S.slots.add("FR");
   // Blokktyper: drill | weighted | learn | recog | predict (krever minutes), rad | recap (minutes eller én runde).
   const mode = MODE_NAME[b.mode] && b.mode !== "guided" ? b.mode : "drill";
   const oneRound = !b.minutes && (mode === "rad" || mode === "recap");
@@ -723,20 +733,20 @@ function algLine(cur, head, rotNow) {
 }
 
 function caseCard(cur) {
-  const st = S.stats[cur.c.n];
+  const st = S.stats[cur.c.key];
   const best = st && st.exec.length ? fmt(Math.min(...st.exec)) : "–";
   const med = st && st.exec.length ? fmt(median(st.exec)) : "–";
   const svg = cubeSvg(simplify(cur.startState).reduce((s, m) => turn(s, m.face, m.amt), SOLVED), { colorMap: colorMapFor(cur.colorShift || 0) });
-  return `<div class="gc-head"><span class="muted small">GUIDET</span><b>F2L ${cur.c.n}</b></div>
+  return `<div class="gc-head"><span class="muted small">GUIDET</span><b>F2L ${cur.c.n}${cur.c.slot !== "FR" ? " · " + cur.c.slot : ""}</b></div>
     <div class="gc-cube">${svg}</div>
-    <div class="muted small">FR-spor · bok ${cur.c.bookNo}, s. ${cur.c.bookPage} · ${cur.c.source}</div>
+    <div class="muted small">${cur.c.slot}-spor · bok ${cur.c.bookNo}, s. ${cur.c.bookPage} · ${cur.c.source}</div>
     <div class="gc-alg">${cur.c.alg}</div>
     <div class="gc-stats"><div><span class="muted small">Beste (drill)</span><b>${best}</b></div><div><span class="muted small">Median</span><b>${med}</b></div></div>`;
 }
 
 // ---------- resultatvindu ----------
 function showOverlay() {
-  const r = S.last, c = CASE_BY_N[r.n];
+  const r = S.last, c = r.c;
   const el = $("overlay");
   const diff = r.prevMedian != null && r.median != null ? r.median - r.prevMedian : null;
   const diffHtml = diff == null || !r.ok || r.guided ? "" : `<span class="diff ${diff <= 0 ? "down" : "up"}">${diff <= 0 ? "−" : "+"}${fmt(Math.abs(diff))}</span>`;
@@ -755,7 +765,7 @@ function showOverlay() {
     el.className = "on bad";
     el.innerHTML = `<div class="o-title">Annen løsning</div>
       <div class="o-cmp"><div><span>Du gjorde</span><code>${r.did}</code></div>
-      <div><span>Skal være – ${c.source === "låst" ? "din låste løsning" : `boka s. ${c.bookPage}`}</span><code class="big">${c.alg}</code></div></div>
+      <div><span>Skal være – ${c.source === "låst" ? "din låste løsning" : c.source === "spor" ? `${c.slot}-sporet, avtalt løsning` : `boka s. ${c.bookPage}`}</span><code class="big">${c.alg}</code></div></div>
       <div class="o-keys"><span>Guidet <kbd>R4</kbd></span><span class="next">Prøv igjen <kbd>U</kbd></span></div>`;
   }
 }
@@ -764,17 +774,19 @@ function hideOverlay() { $("overlay").className = ""; }
 function sidebarResult() {
   const r = S.last;
   if (!r) return `<p class="muted">Ingen caser løst ennå.</p>`;
-  const c = CASE_BY_N[r.n];
+  const c = r.c;
   return `<div class="res">
-    <div class="resrow"><b>${c.n}</b><span class="muted">bok ${c.bookNo}, s. ${c.bookPage}</span><span class="t">${fmt(r.exec)}</span></div>
+    <div class="resrow"><b>${c.n}${c.slot !== "FR" ? " " + c.slot : ""}</b><span class="muted">bok ${c.bookNo}, s. ${c.bookPage}</span><span class="t">${fmt(r.exec)}</span></div>
     <div>${r.ok ? `<span class="good">Valgt løsning${r.fixed ? " (med retting)" : ""}</span>` : `<span class="badtxt">Annen løsning</span>`}${r.guided ? ' <span class="muted">(guidet)</span>' : ""}</div>
     <div class="muted">Gjenkjenning ${fmt(r.rec)} · utførelse ${fmt(r.exec)} · sum ${fmt(r.total)}</div>
   </div>`;
 }
 
 function statsHtml() {
-  const rows = CASES.filter((c) => S.stats[c.n] || S.hist[c.n]).map((c) => {
-    const s = S.stats[c.n], h = S.hist[c.n] || {};
+  const keys = CASES.flatMap((c) => SLOTS.map((sl) => (sl === "FR" ? String(c.n) : `${c.n}@${sl}`))).filter((k) => S.stats[k] || S.hist[k]);
+  const rows = keys.map((k) => {
+    const c = { n: k.replace("@", " ") };
+    const s = S.stats[k], h = S.hist[k] || {};
     const sess = s && s.exec.length ? median(s.exec.map((e, i) => e + s.rec[i])) : null;
     const f = (x) => (x != null ? fmt(x) : "–");
     return `<tr><td>${c.n}</td><td>${f(h.medianRec)}</td><td>${f(h.medianExec)}</td><td>${f(h.medianTotal)}</td><td>${f(h.best)}</td><td>${h.attempts ? `${h.ok}/${h.attempts}` : "–"}</td><td>${f(sess)}</td></tr>`;
@@ -857,6 +869,7 @@ function showAlg(n) {
     <div class="ad-c">${cubeSvg(simplify(invert(expand(c.alg).moves)).reduce((s, m) => turn(s, m.face, m.amt), SOLVED))}</div>
     <div class="ad-alg">${c.alg}</div>
     ${c.source === "låst" ? `<div class="muted small">Boka: ${c.book}</div>` : ""}
+    <table class="slottab">${SLOTS.filter((sl) => sl !== "FR").map((sl) => { const v = variant(n, sl); return `<tr><td>${sl}</td><td class="${v ? "" : "muted"}">${v ? v.alg : "ikke avtalt ennå"}</td></tr>`; }).join("")}</table>
     ${c.alts.length ? `<div class="muted small">Godtas også: ${c.alts.join(" · ")}</div>` : ""}
     <div class="ad-s">Gjenkjenning ${f(h.medianRec)} · utførelse ${f(h.medianExec)} · sum ${f(h.medianTotal)} · beste ${f(h.best)} · godkjent ${h.attempts ? `${h.ok}/${h.attempts}` : "–"}</div>
     <div class="ad-b"><button id="ad-guided">Øv guidet</button></div>
@@ -872,9 +885,16 @@ function showAlg(n) {
 }
 
 function renderPicker() {
-  $("picker").innerHTML = CASES.map((c) =>
-    `<button class="case ${S.selection.has(c.n) ? "on" : ""}" data-n="${c.n}" title="${c.alg}">
-      <span class="n">${c.n}</span><span class="b">bok ${c.bookNo}</span><span class="a">${c.alg}</span></button>`).join("");
+  $("slotbar").innerHTML = `<span class="muted small">Spor:</span>` + SLOTS.map((sl) => {
+    const n = CASES.filter((c) => variant(c.n, sl)).length;
+    return `<button class="slot ${S.slots.has(sl) ? "on" : ""}" data-slot="${sl}">${sl} <span class="muted small">${n}</span></button>`;
+  }).join("") + `<span class="muted small">Grå caser har ingen avtalt løsning i de valgte sporene ennå.</span>`;
+  $("picker").innerHTML = CASES.map((c) => {
+    const sl = availSlots(c.n);
+    const algs = sl.map((x) => `${sl.length > 1 || x !== "FR" ? x + ": " : ""}${variant(c.n, x).alg}`).join(" · ");
+    return `<button class="case ${S.selection.has(c.n) && sl.length ? "on" : ""} ${sl.length ? "" : "na"}" data-n="${c.n}" title="${algs || "ikke avtalt"}" ${sl.length ? "" : "disabled"}>
+      <span class="n">${c.n}</span><span class="b">bok ${c.bookNo}</span><span class="a">${algs || "ikke avtalt i valgte spor"}</span></button>`;
+  }).join("");
 }
 
 // ---------- oppkobling ----------
@@ -924,6 +944,12 @@ function bind() {
     const n = +b.dataset.n;
     S.selection.has(n) ? S.selection.delete(n) : S.selection.add(n);
     renderPicker(); if (S.phase === "idle") startCase(); else render();
+  });
+  $("slotbar").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-slot]"); if (!b) return;
+    const sl = b.dataset.slot;
+    if (S.slots.has(sl)) { if (S.slots.size > 1) S.slots.delete(sl); } else S.slots.add(sl);
+    renderPicker(); setMode(S.baseMode);
   });
   $("sel-all").addEventListener("click", () => { CASES.forEach((c) => S.selection.add(c.n)); renderPicker(); if (S.phase === "idle") startCase(); else render(); });
   $("sel-none").addEventListener("click", () => { S.selection.clear(); renderPicker(); render(); });

@@ -50,8 +50,9 @@ export function withGrips(moves) {
 
 // Samme løsning som algoritmen? Samme trekk, og – når gyroen gir grep – hvert trekk tatt i samme grep
 // som algoritmen forutsetter. F' U' F godtas altså ikke for y' R' U' R.
-export function sameSolution(executed, algMoves) {
+export function sameSolution(executed, algMoves, { strictGrip = true } = {}) {
   if (canonical(executed) !== canonical(algMoves)) return false;
+  if (!strictGrip) return true; // algoritmer med brede trekk/slices: grepet kan ikke leses sikkert nok
   const a = withGrips(executed), b = withGrips(algMoves);
   return a.length === b.length && a.every((m, i) => m.face === b[i].face && m.amt === b[i].amt && m.grips.some((g) => sameGrip(g, b[i].grips[0])));
 }

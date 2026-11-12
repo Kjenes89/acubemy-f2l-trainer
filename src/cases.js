@@ -37,6 +37,24 @@ export const CASES = Object.keys(BOOK).map(Number).map((n) => ({
   alts: LOCKED[n] ? [] : ALTS[n] || [],
 }));
 
+// Avtalte løsninger i de andre sporene (Notion «F2L-prioritering»: kjente/speilede fra bok s. 176–179,
+// 24 FL = Vegards L-versjon, 19 BR lært 2.11.). Alle kontrollert i analyse-simulatoren 12.11.:
+// løser riktig case i riktig spor og bare det sporet. Caser som mangler her er ikke avtalt ennå (grå i pluginen).
+export const SLOTS = ["FR", "FL", "BL", "BR"];
+export const SLOT_ALGS = {
+  FL: { 8: "U L' U2 L U2 L' U L", 18: "L' U2 L U L' U' L", 20: "L' U2 L U' L' U L", 22: "L' U' L U' L' U L", 24: "U' L' U L U L' U L U' L' U L", 31: "U L F' L' F L' U L", 32: "L' U' L U L' U' L U L' U' L", 36: "U2 L' U' L F' L F L'" },
+  BL: { 7: "U' L U2 L' U2 L U' L'", 17: "L U2 L' U' L U L'", 19: "L U2 L' U L U' L'", 21: "L U L' U L U' L'", 32: "L U L' U' L U L' U' L U L'" },
+  BR: { 8: "U R' U2 R U2 R' U R", 18: "R' U2 R U R' U' R", 19: "R' F' U2 F R U R' U' R", 20: "R' U2 R U' R' U R", 22: "U2 R' U' R U' R' U R", 32: "R' U' R U R' U' R U R' U' R" },
+};
+
+/** Casen i et gitt spor: samme felt som i CASES, med sporets algoritme. null = ikke avtalt ennå. */
+export function variant(n, slot) {
+  const c = CASES.find((x) => x.n === n);
+  if (slot === "FR") return { ...c, slot, key: String(n) };
+  const alg = SLOT_ALGS[slot] && SLOT_ALGS[slot][n];
+  return alg ? { ...c, alg, alts: [], source: "spor", slot, key: `${n}@${slot}` } : null;
+}
+
 export const CASE_BY_N = Object.fromEntries(CASES.map((c) => [c.n, c]));
 
 // Konsolideringen før Asker (Notion 9.11.): 7, 8, 9, 16, 33.

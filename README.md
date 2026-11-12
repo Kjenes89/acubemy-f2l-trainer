@@ -25,6 +25,6 @@ Hold kuben med grønn foran og hvit ned og se på skjermen. Casen lages på den 
 - `src/solve.js` – ren løsningslogikk: sporing av forventet trekkrekke, AUF, sammenligning mot valgt algoritme inkl. grep/rotasjoner.
 - `src/app.js` – moduser (Learn, Drill, Recap, Weighted, På rad, Gjenkjenning, Predict, Guidet), planblokker, visning.
 - `src/log.js` – logging til Cloudflare Worker (→ privat repo `cube-data`).
-- `plans/plan.json` – dagens blokker: `{id, trainer:"f2l", name, cases, mode, minutes}`; `mode` = drill | weighted | learn | recog | predict (med `minutes`), rad (`n`, `order`) | recap (`repeat`, `instant`, `order`) med `minutes` eller én runde.
+- `plans/plan.json` – dagens blokker: `{id, trainer:"f2l", name, cases, mode, minutes, slots}` (`slots` f.eks. `["FL","BR"]`, standard `["FR"]`; bare caser med avtalt løsning i `SLOT_ALGS` kommer); `mode` = drill | weighted | learn | recog | predict (med `minutes`), rad (`n`, `order`) | recap (`repeat`, `instant`, `order`) med `minutes` eller én runde.
 - `src/view.js` – tegning av casen slik kuben holdes.
 - `tests/core.test.mjs` – `node tests/core.test.mjs` (+ `solve.test.mjs`, `predict.test.mjs`): kubemodell, rotasjoner, alle 41 caser (valgt alg løser oppsettet, bokas alg løser samme case, ingen duplikater).

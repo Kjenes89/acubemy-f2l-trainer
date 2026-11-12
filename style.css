@@ -157,3 +157,7 @@ input[type=number] { background: #1b2027; color: var(--text); border: 1px solid 
 .nameopts button { display: flex; flex-direction: column; align-items: center; gap: 4px; font: 15px ui-monospace, Consolas, monospace; padding: 10px; }
 .nameopts svg { width: 80px; height: 86px; }
 button:disabled { opacity: .4; cursor: default; }
+
+.slot.on { border-color: var(--accent); background: #13233d; }
+.case.na { opacity: .35; }
+.slottab { font: 14px ui-monospace, Consolas, monospace; text-align: left; } .slottab td { border: 0; padding: 2px 8px; }
