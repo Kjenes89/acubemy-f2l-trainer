@@ -416,9 +416,12 @@ function nextAfter(ok, fn, slow = 1500) {
 // Pre-AUF: hvilken AUF trenger casen før algoritmen? Knapper/piltaster, eller gjør U-trekkene på kuben
 // og start algoritmen (første trekk som ikke er U bekrefter). Navn: hvilken algoritme hører til casen?
 function newRecogRound() {
-  const c = pickCase();
+  let c = pickCase();
   if (!c) { S.phase = "idle"; S.cur = null; render(); return; }
-  const r = makeInstance(c);
+  let r = makeInstance(c);
+  // Pre-AUF: caser der paret står i sporet (37–41) har ingen AUF å kjenne igjen – hopp over dem.
+  for (let i = 0; S.recog.sub === "auf" && r.valid.size === 4 && i < 50; i++) { S.cur = { c }; c = pickCase(); r = makeInstance(c); }
+  if (S.recog.sub === "auf" && r.valid.size === 4) { S.phase = "idle"; S.cur = null; render(); $("phase").innerHTML = `<div class="big">Casene du har valgt har ingen AUF (paret står i sporet).</div>`; return; }
   r.net = 0;
   if (S.recog.sub === "name") {
     const pool = shuffle([...selected().filter((n) => n !== c.n), ...shuffle(CASES.map((x) => x.n).filter((n) => n !== c.n && !S.selection.has(n)))]);
