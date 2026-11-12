@@ -117,7 +117,10 @@ export class Cube3D {
     const OPP = { U: "D", D: "U", R: "L", L: "R", F: "B", B: "F" };
     const last = this.lastGrip;
     let up = Object.keys(v).reduce((a, b) => (v[b].y > v[a].y ? b : a));
-    if (last && v[last.U].y > 0.5) up = last.U;
+    // Opp byttes først når den gamle opp-flaten er vippet over ca. 78° (før 60°). Ved F2/R2 og omgrep vippes
+    // kuben mye mot deg, og det ble lest som en x-rotasjon (Gc avvist 3 ganger 12.11. 21:55, «(rotert)»).
+    // En ekte x/x' er 90°, så den fanges fortsatt.
+    if (last && v[last.U].y > 0.2) up = last.U;
     const sides = Object.keys(v).filter((s) => s !== up && s !== OPP[up]);
     const horiz = (s) => { const h = new THREE.Vector2(v[s].x, v[s].z); return h.length() > 1e-6 ? h.normalize() : h; };
     let front = sides.reduce((a, b) => (horiz(b).y > horiz(a).y ? b : a));
