@@ -860,7 +860,7 @@ function slowCheck(now) {
     W.pairs.push({ ...r, rec, exec, gripStart: gs });
     log({ block: S.block ? S.block.id : null, trainer: "f2l", mode: "slowsolve", solve: W.no, case: r.n ?? null, slot: r.held || null,
       ok: r.verdict === "ok", verdict: r.verdict, rec: rec != null ? Math.round(rec) : null, exec: exec != null ? Math.round(exec) : null,
-      did: r.did, alg: r.alg || (r.hint && r.hint.alg) || null, grip: gs ? gs.D + gs.F : null });
+      did: r.did, alg: r.verdict === "ikke-avtalt" ? null : r.alg || null, grip: gs ? gs.D + gs.F : null });
     // Alarm for alle innførte caser (og det du har valgt). Caser uten bestemt løsning logges uten alarm.
     const inSel = r.n != null && (INTRODUCED.includes(r.n) || S.selection.has(r.n));
     if (r.verdict === "feil" && !inSel) {
@@ -874,7 +874,8 @@ function slowCheck(now) {
       return;
     } else if (r.verdict === "ok") { W.note = { cls: "ok", text: `✓ F2L ${r.n} · ${r.held}` }; flash(`✓ ${r.n} ${r.held}`); }
     else if (r.verdict === "ikke-avtalt") {
-      W.note = { cls: "warn", text: `F2L ${r.n} løst i ${r.held || "?"} – i ${r.held || "det sporet"} har vi ikke avtalt noen løsning (ingen alarm).${r.hint ? ` Avtalt: ${r.hint.rot ? `roter ${r.hint.rot} så paret står i ${r.hint.held}, og gjør ` : `i ${r.hint.held}: `}${r.hint.alg}` : ""}` };
+      // Ingen avtalt løsning i sporet = fritt, ikke vurdert. Ingen forslag om å rotere til et annet spor.
+      W.note = { cls: "muted", text: `F2L ${r.n} i ${r.held || "?"} – ingen avtalt løsning i ${r.held || "det sporet"} ennå, ikke vurdert` };
     } else W.note = { cls: "muted", text: "Paret sto ikke som en av de 41 casene – ikke vurdert" };
     slowResetSeg(now);
   }
@@ -977,7 +978,7 @@ function slowPanel() {
   const W = S.slow;
   const COLN = { U: "hvit", D: "gul", F: "grønn", B: "blå", R: "rød", L: "oransje" };
   const pairChip = (src) => (p, i) => {
-    const cls = { ok: "ok", feil: "bad", "ikke-avtalt": "warn" }[p.verdict] || "muted";
+    const cls = { ok: "ok", feil: "bad" }[p.verdict] || "muted";
     const sel = W.showPair && W.showPair.src === src && W.showPair.i === i ? " sel" : "";
     return `<button class="pp ${cls}${sel}" data-src="${src}" data-pi="${i}" title="Trykk for detaljer">${p.n ?? "?"}${p.held ? " " + p.held : ""}</button>`;
   };
@@ -987,12 +988,12 @@ function slowPanel() {
     const list = sp && (sp.src === "cur" ? W.pairs : W.last && W.last.pairs);
     const p = list && list[sp.i];
     if (!p) return "";
-    const vtxt = { ok: "riktig", feil: "feil løsning", "ikke-avtalt": "ingen avtalt løsning i det sporet", "ikke-vurdert": "ikke vurdert", utenfor: "ikke innført" }[p.verdict] || p.verdict;
+    const vtxt = { ok: "riktig", feil: "feil løsning", "ikke-avtalt": "ingen avtalt løsning i det sporet ennå (fritt)", "ikke-vurdert": "ikke vurdert", utenfor: "ikke innført" }[p.verdict] || p.verdict;
     const g = p.gripStart;
-    const alg = p.alg || (p.hint && p.hint.alg);
+    const alg = p.verdict === "ikke-avtalt" ? null : p.alg;
     return `<div class="pairdetail small">F2L ${p.n ?? "?"}${p.held ? " i " + p.held : ""} – ${vtxt}${p.multislot ? ` (via ledig spor fra ${p.multislot})` : ""}
       ${p.did ? `<div>Du gjorde: <b class="mono">${p.did}</b></div>` : ""}
-      ${alg ? `<div>Avtalt${p.hint && p.hint.rot ? ` (roter ${p.hint.rot}, ${p.hint.held})` : ""}: <b class="mono">${alg}</b></div>` : ""}
+      ${alg ? `<div>Avtalt: <b class="mono">${alg}</b></div>` : ""}
       ${g ? `<div class="muted">Gyroen ved første trekk: ${COLN[g.D]} ned · ${COLN[g.F]} foran</div>` : ""}</div>`;
   };
   const pairs = W.pairs.length ? `<div class="pps">${W.pairs.map(pairChip("cur")).join("")}</div>${W.showPair && W.showPair.src === "cur" ? pairDetail() : ""}` : "";
