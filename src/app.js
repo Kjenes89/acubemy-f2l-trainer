@@ -883,7 +883,10 @@ function rotateReminder(cur) {
   const g = liveGrip();
   if (!g || cur.execStart != null) return "";
   const need = yNeeded(g, START_GRIP);
-  if (need === "") return "";
+  // Bare for rotasjon som henger igjen fra forrige case: har kuben vært i startgrepet i denne casen,
+  // er en senere rotasjon en del av løsningen (f.eks. y' før eller etter AUF) og skal ikke stoppes.
+  if (need === "") { cur.homeSeen = true; return ""; }
+  if (cur.homeSeen || cur.executed.length) return "";
   if (S.mode === "guided") {
     const head = cur.guide.items.find((m) => !m.corr);
     if (head && !head.auf) return ""; // guidet viser rotasjonen i algoritmelinja i stedet
