@@ -873,7 +873,9 @@ function slowCheck(now) {
     W.pairs.push({ ...r, rec, exec, gripStart: gs });
     log({ block: S.block ? S.block.id : null, trainer: "f2l", mode: "slowsolve", solve: W.no, case: r.n ?? null, slot: r.held || null,
       ok: r.verdict === "ok", verdict: r.verdict, rec: rec != null ? Math.round(rec) : null, exec: exec != null ? Math.round(exec) : null,
-      did: r.did ? r.did.replace(/[\[\]]/g, "") : null, alg: r.verdict === "ikke-avtalt" ? null : r.alg || null, grip: gs ? gs.D + gs.F : null });
+      did: r.did ? r.did.replace(/[\[\]]/g, "") : null, alg: r.verdict === "ikke-avtalt" ? null : r.alg || null, grip: gs ? gs.D + gs.F : null,
+      // Grepet gyroen leste ved hvert trekk i segmentet (fra forrige par), så rotasjoner kan etterprøves.
+      grips: [seg.grip, ...seg.moves.map((m) => m.grip)].filter(Boolean).map((g) => g.D + g.F).join(" ").slice(0, 400) });
     // Alarm for alle innførte caser (og det du har valgt). Caser uten bestemt løsning logges uten alarm.
     const inSel = r.n != null && (INTRODUCED.includes(r.n) || S.selection.has(r.n) || isSolveLocked(r.n, r.held));
     if (r.verdict === "feil" && !inSel) {
