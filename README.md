@@ -54,7 +54,7 @@ Unntaket er **Slow solve**: der følges den fysiske kuben.
 | `src/cube.js` | Fasettmodell (Kociemba URFDLB, kubens egen ramme: hvit = U, grønn = F, rød = R) |
 | `src/alg.js` | Algoritme i grepet → flatetrekk i kubens ramme. Rotasjoner, brede trekk, slices, R3. `expand(alg, startgrep)` |
 | `src/solve.js` | Sporing av forventet trekkrekke (`Tracker`), AUF, `sameSolution` (kanonisk + grep), `didInYourGrip` |
-| `src/cases.js` | 41 F2L-caser (bok, `LOCKED` = 6 og 8, `ALTS`, `SLOT_ALGS`, `INTRODUCED`) |
+| `src/cases.js` | 41 F2L-caser (bok, `LOCKED` = 6 og 8, `ALTS`, `SLOT_ALGS`, `INTRODUCED`). **Eneste kilde**: analyseskriptet (`pll-recognition-trainer/analyse/f2l.py`) leser casene herfra med node |
 | `src/slowsolve.js` | Kryss/spor-sjekk, casetabell (41 × 4 spor × 4 AUF), scrambler og `judgePair` |
 | `src/pll.js`, `src/pllcases.js` | PLL-treneren |
 | `src/view3d.js`, `src/view.js` | 3D-kube (three.js, gyro, `grip()`) og 2D-tegning |
