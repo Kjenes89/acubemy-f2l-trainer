@@ -102,6 +102,24 @@ check(tested6 > 10, `uttak testet ${tested6}`);
     check(r.verdict === "ok" && r.n === c.n, `multislot + ${c.n}: ${JSON.stringify(r)} ${nw}`);
   }
   check(tested >= 3, `multislot testet ${tested}`);
+  // Ledig spor brukt til å endre casen (bare B/R/U i sensorramme – rører ikke FL-sidene), så avtalt løsning
+  // for casen det ble → ok.
+  let changed = 0;
+  for (const c of CASES.filter((x) => x.n <= 36)) for (const preS of ["R D R'", "R D' R'", "B D B'", "B' D' B"]) {
+    const caseState = applyMoves(SOLVED, invert(expand(c.alg).moves));
+    const pre = preS.split(" ").map((t) => ({ face: t[0], amt: t[1] === "'" ? 3 : 1, grip: START_GRIP, grips: [START_GRIP] }));
+    const mid = applyMoves(caseState, pre);
+    const n2 = crossSolved(mid) ? caseOf(mid, "FL") : null;
+    if (n2 == null || n2 === c.n || n2 > 36) continue;
+    const alg2 = expand(CASE_BY_N[n2].alg).moves;
+    const auf = [0, 1, 2, 3].find((k) => solvedSlots(applyMoves(turn(mid, "D", k), alg2)).has("FL"));
+    if (auf == null) continue;
+    const all = [...pre, ...(auf ? [{ face: "D", amt: auf, grip: START_GRIP, grips: [START_GRIP] }] : []), ...withG(alg2)];
+    changed++;
+    const r = judgePair({ start: caseState, moves: all, slot: "FL", startGrip: START_GRIP });
+    check(r.verdict === "ok" && r.n === n2 && r.multislot === c.n, `ledig spor ${c.n}→${n2} (${preS}): ${JSON.stringify(r)}`);
+  }
+  check(changed >= 10, `ledig spor testet ${changed}`);
   const st9 = applyMoves(SOLVED, invert(expand(CASE_BY_N[9].alg).moves));
   let ran9 = 0;
   for (const pre of ["", "U ", "U2 ", "U' "]) {

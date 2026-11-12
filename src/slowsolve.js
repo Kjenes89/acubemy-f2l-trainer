@@ -162,15 +162,19 @@ export function judgePair({ start, moves, slot, startGrip = null }) {
     }
   }
   const n = caseOf(states[j], slot);
-  // Multislotting: trekk på andre par (eller en rotasjon) før innsettingen godtas, så lenge casen for dette
-  // paret er den samme der den avtalte løsningen starter. Endres casen underveis (R U R' først osv.), er det
-  // en annen løsning og fortsatt feil.
+  // Multislotting: trekk før innsettingen godtas når de ikke dreier noen av sidene til dette sporet
+  // (bare U og andre spor, f.eks. et ledig spor brukt til å sette sammen paret). Da må innsettingen være
+  // avtalt løsning for casen paret står som når den starter – også om casen er endret av de trekkene.
+  // Dreier trekkene sporets egne sider (som R U' R' først på 9), er det en annen løsning og fortsatt feil.
+  const slotFaces = new Set(slot.split(""));
   for (let k = j + 1; k < moves.length; k++) {
-    if (moves[k].face === "D" || !crossSolved(states[k]) || caseOf(states[k], slot) !== n) continue;
+    if (slotFaces.has(moves[k - 1].face)) break; // fra her har sporets egne sider vært dreid
+    const nk = moves[k].face === "D" || !crossSolved(states[k]) ? null : caseOf(states[k], slot);
+    if (nk == null) continue;
     for (const g of candGrips(k)) {
-      const { held, algs } = optionsFor(n, g);
+      const { held, algs } = optionsFor(nk, g);
       for (const a of algs) {
-        if (sameSolution(moves.slice(k), expand(a, g).moves, { strictGrip: strictGrip(a) })) return { verdict: "ok", n, held, alg: a, from: k };
+        if (sameSolution(moves.slice(k), expand(a, g).moves, { strictGrip: strictGrip(a) })) return { verdict: "ok", n: nk, held, alg: a, from: k, multislot: nk !== n ? n : undefined };
       }
     }
   }

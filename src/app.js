@@ -1002,7 +1002,10 @@ function slowPanel() {
   const status = W.phase === "ll" ? "F2L ferdig – løs siste lag (vurderes ikke ennå)"
     : !W.f2l ? "Løs krysset (hvit ned). F2L-parene vurderes når krysset står."
     : `F2L: ${W.solved.size} av 4 par · hvert par vurderes når det er satt inn`;
-  return `<div class="hint">${status}</div>
+  const gg = liveGrip();
+  const COL = { U: "hvit", D: "gul", F: "grønn", B: "blå", R: "rød", L: "oransje" };
+  const gyroLine = gg ? `<div class="muted small">Gyroen leser: ${COL[gg.D]} ned · ${COL[gg.F]} foran · ${COL[gg.R]} til høyre. Sporet vurderes slik du holder kuben ved første trekk i casen.</div>` : `<div class="warnline small">Ingen gyro – sporet vurderes som om du holder hvit ned, grønn foran</div>`;
+  return `<div class="hint">${status}</div>${W.phase === "solve" ? gyroLine : ""}
     ${W.retry ? `<div class="warnline">Prøv F2L ${W.retry.n} igjen · står du fast: oransje R4 eller <button id="slow-guide">Guidet</button></div>` : ""}
     ${W.note ? `<div class="${W.note.cls === "ok" ? "okline" : W.note.cls === "warn" ? "warnline" : "muted"}">${W.note.text}</div>` : ""}
     ${pairs}${last}`;
@@ -1400,8 +1403,8 @@ async function boot() {
         requestAnimationFrame(() => { const g = view3d.grip(); const k = g ? g.U + g.F : ""; if (k !== S.gripKey) { S.gripKey = k; PLL.onGrip(); } });
         return;
       }
-      // Oppdater hint/påminnelse når kuben roteres, uten å vente på et trekk.
-      if (S.phase === "case") {
+      // Oppdater hint/påminnelse når kuben roteres, uten å vente på et trekk (og gyrolinja i slow solve).
+      if (S.phase === "case" || S.mode === "slow") {
         requestAnimationFrame(() => {
           const g = view3d.grip();
           const k = g ? g.U + g.F : "";
