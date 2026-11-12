@@ -84,10 +84,14 @@ function pick() {
 
 // ---------- case ----------
 function startCase(same = false) {
-  const c = same && P.cur ? P.cur.c : pick();
+  let c = same && P.cur ? P.cur.c : pick();
+  // I en blokk slutter ikke runden blokka: si fra én gang og start en ny runde (avslutt selv).
+  if (!c && P.block && P.mode === "rad" && P.rad.queue.length) {
+    if (!P.block.goalWarned) { P.block.goalWarned = true; ctx.beep(3); flash("Runden er ferdig – fortsett eller avslutt"); }
+    buildRad(); c = pick();
+  }
   if (!c) {
     const radDone = P.mode === "rad" && P.rad.queue.length;
-    if (radDone && P.block) { endBlock(); return; }
     P.phase = "idle"; P.cur = null; render();
     if (radDone) $("p-phase").innerHTML = `<div class="big">Runden er ferdig: ${P.rad.queue.length} caser, ${P.rad.n} riktige på rad hver.</div>`;
     return;

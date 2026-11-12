@@ -176,7 +176,7 @@ function radAdvance(reason) {
   S.rad.idx++; S.rad.streak = 0;
   if (S.rad.idx >= S.rad.queue.length) {
     flash(reason === "done" ? "Runde ferdig – ny runde" : "Ny runde");
-    if (S.block && S.block.untilRound) { S.block.roundDone = true; return; }
+    if (S.block && S.block.untilRound) blockGoalReached("Runden er ferdig"); // blokka fortsetter med ny runde
     buildRadQueue();
   } else if (reason === "done") flash(`✓ ${S.rad.n} på rad`);
 }
@@ -185,8 +185,7 @@ function radAdvance(reason) {
 function startCase(sameAgain = false) {
   hideOverlay();
   if (S.mode === "slow") { slowStart(); return; }
-  // Tidsblokker går på overtid til du avslutter dem selv; bare rundeblokker slutter av seg selv.
-  if (S.block && S.block.roundDone) { endBlock(); return; }
+  // Ingen blokk slutter av seg selv: tid, runder og antall solves går på «overtid» til du trykker «Avslutt blokk».
   if (S.mode === "predict") { if (S.predict.sub === "review") reviewShow(0); else newPredictRound(); return; }
   if (S.mode === "recog") { newRecogRound(); return; }
   const picked = sameAgain && S.cur ? S.cur.c : pickCase();
@@ -194,7 +193,7 @@ function startCase(sameAgain = false) {
   const c = picked && (sameAgain && S.cur && S.cur.c.slot ? picked : variantFor(picked.n));
   if (!c) {
     const recapDone = S.mode === "recap" && S.recap.queue.length;
-    if (recapDone && S.block) { endBlock(); return; }
+    if (recapDone && S.block) blockGoalReached("Recapen er ferdig");
     S.phase = "idle"; S.cur = null; render();
     if (recapDone) recapSummary();
     return;
@@ -410,7 +409,10 @@ function blockTick() {
   const left = S.block.end - now;
   const el = $("blocktimer");
   const q = S.mode === "recap" || (S.mode === "guided" && S.baseMode === "recap") ? S.recap : S.rad;
-  if (el && S.block.solves && !isFinite(left)) el.textContent = (S.block.pausedAt ? "⏸ " : "") + `${S.block.doneSolves}/${S.block.solves}`;
+  if (el && S.block.solves && !isFinite(left)) {
+    el.textContent = (S.block.pausedAt ? "⏸ " : "") + `${S.block.doneSolves}/${S.block.solves}`;
+    el.classList.toggle("over", S.block.doneSolves >= S.block.solves);
+  }
   else if (el) {
     el.textContent = (S.block.pausedAt ? "⏸ " : "") + (!isFinite(left) ? `${Math.min(q.idx + 1, q.queue.length)}/${q.queue.length}` : left > 0 ? mmss(left) : "+" + mmss(-left));
     el.classList.toggle("over", isFinite(left) && left <= 0);
@@ -426,6 +428,14 @@ function blockTick() {
   }
   clearTimeout(blockTick.t);
   blockTick.t = setTimeout(blockTick, 250);
+}
+
+// Målet for blokka (runde, recap, antall solves) er nådd: si fra én gang, men la blokka gå videre.
+function blockGoalReached(what) {
+  if (!S.block || S.block.goalWarned) return;
+  S.block.goalWarned = true;
+  beep(3);
+  flash(`${what} – fortsett eller avslutt`);
 }
 
 // Pause: blokkas klokke står. I drill o.l. ignoreres trekk, og casen startes på nytt ved fortsett, så pausen
@@ -898,7 +908,7 @@ function slowFinish(now) {
   if (rec.block) (S.blockSolvesLocal ||= []).push({ block: rec.block, t: new Date().toISOString() });
   beep(1);
   slowNewScramble();
-  if (S.block && S.block.solves) { S.block.doneSolves = solvesDone(S.block.id); if (S.block.doneSolves >= S.block.solves) endBlock(); }
+  if (S.block && S.block.solves) { S.block.doneSolves = solvesDone(S.block.id); if (S.block.doneSolves >= S.block.solves) blockGoalReached(`${S.block.solves} av ${S.block.solves} solves`); }
 }
 // Guidet avtalt løsning i slow solve (etter en retting, når du står fast). Teller ikke som riktig.
 function slowStartGuide() {
