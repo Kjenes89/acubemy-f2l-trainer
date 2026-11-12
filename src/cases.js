@@ -52,16 +52,17 @@ export const SLOT_ALGS = {
 // Vegard holdt kuben ved første trekk): løsningen han bruker i minst 60 % av minst 4 forsøk i sporet og som
 // står i boka for det sporet (s. 176–179, lest og kontrollert i simulator), eller den avtalte FR-løsningen.
 // Nye sporløsninger herfra legges til i SLOT_ALGS; alle i SOLVE_LOCKED gir alarm i slow solve.
-Object.assign(SLOT_ALGS.BL, {"1": "U L U' L'", "3": "B' U' B", "4": "L U L'", "5": "U' L U L' U2 L U' L'", "14": "U' L U' L' U L U L'", "23": "U L U' L' U' L U' L' U L U' L'", "25": "L U' L' U' L U' L' U L U L'", "27": "L U' L' U L U' L'", "33": "U' L U' L' U2 L U' L'"});
-Object.assign(SLOT_ALGS.FL, {"1": "F' L F L'", "2": "U' L' U L", "3": "L' U' L", "4": "F U F'", "6": "U L' U' L U2 L' U L", "13": "U L' U L U' L' U' L", "33": "U' L' U' L U2 L' U' L", "34": "U L' U L U2 L' U L"});
-Object.assign(SLOT_ALGS.BR, {"2": "U' R' U R", "3": "R' U' R", "4": "B U B'", "6": "U R' U' R U2 R' U R", "12": "U R' U2 R U' B U B'", "13": "U R' U R U' R' U' R", "15": "R' U R U2 B U B'"});
+Object.assign(SLOT_ALGS.BL, {"1": "U L U' L'", "4": "L U L'", "5": "U' L U L' U2 L U' L'", "14": "U' L U' L' U L U L'", "23": "U L U' L' U' L U' L' U L U' L'", "25": "L U' L' U' L U' L' U L U L'", "27": "L U' L' U L U' L'", "33": "U' L U' L' U2 L U' L'"});
+Object.assign(SLOT_ALGS.FL, {"2": "U' L' U L", "3": "L' U' L", "4": "F U F'", "6": "U L' U' L U2 L' U L", "13": "U L' U L U' L' U' L", "33": "U' L' U' L U2 L' U' L", "34": "U L' U L U2 L' U L"});
+Object.assign(SLOT_ALGS.BR, {"2": "U' R' U R", "3": "R' U' R", "6": "U R' U' R U2 R' U R", "13": "U R' U R U' R' U' R"});
 // Unntak (Vegard 12.11. 21:15): der boka bruker brede trekk (1 FL F' r U r', 3 BL f' L' f, 4 BR f R f', 12 BR
 // … f R f', 15 BR … f R f'), gjør Vegard samme resultat med vanlige flatetrekk (B' U' B osv., sett i eksporten).
-// Det er ikke bokas utførelse; her står hans egen. Bokas versjon (antakelig valgt for fingertricks) testes etter Asker.
+// Det er ikke bokas utførelse. Tatt ut igjen (Vegard 21:32): å låse hans egen variant ville øve inn en mulig uvane.
+// De er frie (ingen alarm) til bokas versjon (antakelig valgt for fingertricks) er testet etter Asker.
 // For disse fem er det resultatet som er låst, ikke rotasjonen: eksporten viser både B U B' og varianter med
 // rotasjon midt i (f.eks. «B d L'» = B U y' L', og y' L U L' i slow solve 12.11. 21:26). Alle godtas.
 export const OWN_LOOSE = { FL: [1], BL: [3], BR: [4, 12, 15] };
-export const SOLVE_LOCKED = {"FR": [1, 2, 3, 4, 5, 7, 14, 16, 17, 19, 20, 21, 22, 23, 27, 28, 34, 38], "FL": [1, 2, 3, 4, 6, 8, 13, 18, 20, 22, 24, 33, 34], "BL": [1, 3, 4, 5, 7, 14, 17, 19, 21, 23, 25, 27, 33], "BR": [2, 3, 4, 6, 12, 13, 15, 18, 20, 22]};
+export const SOLVE_LOCKED = {"FR": [1, 2, 3, 4, 5, 7, 14, 16, 17, 19, 20, 21, 22, 23, 27, 28, 34, 38], "FL": [2, 3, 4, 6, 8, 13, 18, 20, 22, 24, 33, 34], "BL": [1, 4, 5, 7, 14, 17, 19, 21, 23, 25, 27, 33], "BR": [2, 3, 6, 13, 18, 20, 22]};
 export const isSolveLocked = (n, slot) => !!(SOLVE_LOCKED[slot] && SOLVE_LOCKED[slot].includes(n));
 
 /** Casen i et gitt spor: samme felt som i CASES, med sporets algoritme. null = ikke avtalt ennå. */
