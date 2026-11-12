@@ -164,7 +164,8 @@ export class Cube3D {
     }
     if (!this.anim && this.queue.length) this.startAnim(this.queue.shift());
     // acubemy oppgir orienteringen relativt til kalibreringsgrepet (hvit ned, grønn foran) → HELD · q.
-    if (this.gyro) this.target.multiplyQuaternions(HELD, this.gyro);
+    if (this.fixed) this.target.copy(HELD); // fast visning (Review): kuben følger ikke gyroen
+    else if (this.gyro) this.target.multiplyQuaternions(HELD, this.gyro);
     this.root.quaternion.slerp(this.target, 0.35);
     this.renderer.render(this.scene, this.camera);
   }

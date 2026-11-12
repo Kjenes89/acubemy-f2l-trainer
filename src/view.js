@@ -22,7 +22,7 @@ const HELD_POS = {
 };
 
 /** Alle brikker med gult (siste-lag-brikker, også en som står i sporet) grås ut, slik at bare F2L-brikkene synes. */
-function lastLayerMask(h) {
+function lastLayerMask(h, show = "pair") {
   const pieces = new Map();
   for (const f of "UDFRBL") for (let i = 0; i < 9; i++) {
     const p = HELD_POS[f]((i / 3) | 0, i % 3);
@@ -32,16 +32,21 @@ function lastLayerMask(h) {
   }
   const grey = new Set();
   for (const stickers of pieces.values()) {
-    if (stickers.some(([f, i]) => h[f][i] === "D")) for (const [f, i] of stickers) grey.add(f + i);
+    const cols = stickers.map(([f, i]) => h[f][i]);
+    const isPair = (n) => cols.length === n && cols.includes("F") && cols.includes("L") && (n === 2 || cols.includes("U"));
+    // Paret i FR-sporet: hjørnet hvit–grønn–oransje og kanten grønn–oransje (kubens U, F, L).
+    const hide = cols.includes("D") || (show === "corner" && isPair(2)) || (show === "edge" && isPair(3));
+    if (hide) for (const [f, i] of stickers) grey.add(f + i);
   }
   return grey;
 }
 
 const GREY = "#3a3d42";
 
-export function cubeSvg(facelets, { dimLastLayer = true, colorMap = {} } = {}) {
+/** show: "pair" (begge brikkene), "corner" (bare hjørnet) eller "edge" (bare kanten). */
+export function cubeSvg(facelets, { dimLastLayer = true, colorMap = {}, show = "pair" } = {}) {
   const h = heldFaces(facelets);
-  const grey = dimLastLayer ? lastLayerMask(h) : new Set();
+  const grey = dimLastLayer ? lastLayerMask(h, show) : new Set();
   const color = (f, i) => (grey.has(f + i) ? GREY : COLORS[colorMap[h[f][i]] || h[f][i]]);
   let out = "";
   for (let i = 0; i < 9; i++) out += quad(HELD_POS.U((i / 3) | 0, i % 3).map((v, k) => (k === 1 ? 1.5 : v)), [1, 0, 0], [0, 0, 1], color("U", i));

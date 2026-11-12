@@ -30,8 +30,10 @@ const S = {
   learn: { threshold: 4.0, meanOf: 3, newChance: 50, learned: new Set(), recent: {}, intro: new Set() },
   recap: { repeat: 2, instant: false, order: "random", queue: [], idx: 0, times: {} },
   weighted: { strength: 2 },
-  recog: { results: [], combo: 0, best: 0 }, // gjenkjenning: AUF-en gjøres på kuben, første trekk som ikke er U = svar
-  predict: { results: [], combo: 0, best: 0, round: null, view: "pair" },
+  // Gjenkjenning og Predict: fast bilde (ingen gyro, ingen guiding) – ren gjenkjenning, som i solved.no.
+  recog: { sub: "auf", options: 4, images: false, round: null, results: [], combo: 0, best: 0 },
+  predict: { sub: "predict", view: "pair", tps: 3, round: null, results: [], combo: 0, best: 0 },
+  review: { idx: 0, inst: null, timer: null },
   hist: {}, // per case fra loggen (Worker /api/stats): medianTotal, attempts, ok
   mixLL: true,
   colorSwap: true,
@@ -150,6 +152,7 @@ function pickCase() {
 const MODE_NAME = { drill: "Drill", learn: "Learn", recap: "Recap", weighted: "Weighted", rad: "På rad", recog: "Gjenkjenning", predict: "Predict", guided: "Guidet" };
 // Bytt treningsmodus (ikke guidet – det er et hjelpemiddel oppå modusen, se toggleGuided).
 function setMode(m, { start = true } = {}) {
+  clearInterval(S.review.timer); S.review.timer = null;
   S.mode = S.baseMode = m; S.repeat = null;
   if (m === "rad") buildRadQueue();
   if (m === "learn") learnInit();
@@ -171,7 +174,8 @@ function radAdvance(reason) {
 function startCase(sameAgain = false) {
   hideOverlay();
   if (S.block && (performance.now() >= S.block.end || S.block.roundDone)) { endBlock(); return; }
-  if (S.mode === "predict") { newPredictRound(); return; }
+  if (S.mode === "predict") { if (S.predict.sub === "review") reviewShow(0); else newPredictRound(); return; }
+  if (S.mode === "recog") { newRecogRound(); return; }
   const c = sameAgain && S.cur ? S.cur.c : pickCase();
   if (!c) {
     const recapDone = S.mode === "recap" && S.recap.queue.length;
@@ -340,7 +344,7 @@ function blockTick() {
     S.block.warned = true;
     beep(3);
     flash("Tiden er ute");
-    if (S.phase === "result" || S.phase === "predict" || S.phase === "idle" || (S.phase === "case" && S.cur && S.cur.execStart == null)) endBlock();
+    if (["result", "predict", "recog", "review", "idle", "pause"].includes(S.phase) || (S.phase === "case" && S.cur && S.cur.execStart == null)) endBlock();
   }
   clearTimeout(blockTick.t);
   blockTick.t = setTimeout(blockTick, 250);
@@ -376,48 +380,92 @@ function beep(times) {
   } catch (e) { /* lyd ikke tilgjengelig */ }
 }
 
-// ---------- Gjenkjenning (pre-AUF) ----------
-// Casen vises; du gjør AUF-en på kuben og starter algoritmen. Første trekk som ikke er U er svaret:
-// riktig hvis U-ene du har gjort er AUF-en casen trenger. Tiden = fra casen vises til svaret.
-function recogMove(face, a, now) {
-  const cur = S.cur;
-  S.facelets = turn(S.facelets, face, a);
-  if (view3d) view3d.move(face, a, S.facelets, dimNow());
-  if (face === "D") {
-    cur.netAuf = ((cur.netAuf || 0) + a) % 4;
-    cur.recent.push({ face, a, t: now });
-    if (cur.recent.length > 4) cur.recent.shift();
-    if (fourInRow(cur.recent, face, a, now)) { if (window.acubemy) acubemy.calibrateGyro(); cur.recent = []; flash("Gyro kalibrert"); }
-    render(); return;
-  }
-  const ok = (cur.netAuf || 0) === cur.aufAmt;
-  const t = now - cur.t0;
-  const R = S.recog;
-  R.combo = ok ? R.combo + 1 : 0; R.best = Math.max(R.best, R.combo);
-  R.results.push({ n: cur.c.n, ok, t, need: cur.aufAmt, did: cur.netAuf || 0 });
-  log({ block: S.block ? S.block.id : null, trainer: "f2l", mode: "recog", case: cur.c.n, ok, rec: Math.round(t), auf: cur.aufAmt, didAuf: cur.netAuf || 0, colorShift: cur.colorShift || 0 });
-  const auf = (k) => ["ingen", "U", "U2", "U'"][k];
-  flash(ok ? `✓ ${fmt(t)}` : `✗ skulle vært ${auf(cur.aufAmt)} (du: ${auf(cur.netAuf || 0)})`);
-  S.phase = "pause"; render();
-  setTimeout(() => { if (S.phase === "pause") startCase(); }, ok ? 250 : 1400);
+// ---------- felles: en konkret forekomst av en case ----------
+function makeInstance(c) {
+  const alg = expand(c.alg);
+  const pre = S.mixLL ? [...expand(LL_SCRAMBLERS[rnd(LL_SCRAMBLERS.length)]).moves, { face: "D", amt: rnd(4) }] : [];
+  const auf = rnd(4);
+  const state = simplify([...pre, ...invert(alg.moves), { face: "D", amt: auf }]).reduce((st, m) => turn(st, m.face, m.amt), SOLVED);
+  const { items, aufAmt } = withPreAuf((4 - auf) % 4, alg.moves);
+  const rest = items.filter((m) => !m.auf);
+  // Alle AUF-er som gjør at algoritmen løser casen (står paret i sporet, virker alle fire).
+  const valid = new Set([0, 1, 2, 3].filter((k) => f2lSolved(rest.reduce((st, m) => turn(st, m.face, m.amt), turn(state, "D", k)))));
+  return { c, alg, state, start: state, items, aufAmt, valid, colorShift: S.colorSwap ? rnd(4) : 0, t0: performance.now() };
 }
+const AUF_NAME = ["Ingen", "U", "U2", "U'"];
+const shuffle = (xs) => xs.map((x) => [Math.random(), x]).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
 
 function stripHtml(list) {
   return `<div class="strip">${list.slice(-24).map((r) => `<span class="${r.ok ? "g" : "b"}" title="F2L ${r.n} · ${fmt(r.t)}">${r.n}</span>`).join("")}</div>`;
 }
-function recogPanel() {
-  const R = S.recog, ok = R.results.filter((r) => r.ok);
-  const med = ok.length ? fmt(median(ok.map((r) => r.t))) : "–";
-  return `<div class="hint">Gjør AUF-en og start algoritmen – første trekk som ikke er U er svaret</div>
-    <div class="radprog">Riktig ${ok.length}/${R.results.length} · median ${med} s · rekke ${R.combo} (beste ${R.best})</div>${stripHtml(R.results)}`;
+function scoreLine(R) {
+  const ok = R.results.filter((r) => r.ok);
+  return `<div class="radprog">Riktig ${ok.length}/${R.results.length} · median ${ok.length ? fmt(median(ok.map((r) => r.t))) : "–"} s · rekke ${R.combo} (beste ${R.best})</div>${stripHtml(R.results)}`;
+}
+function record(R, mode, n, ok, t, extra) {
+  R.combo = ok ? R.combo + 1 : 0; R.best = Math.max(R.best, R.combo);
+  R.results.push({ n, ok, t });
+  log({ block: S.block ? S.block.id : null, trainer: "f2l", mode, case: n, ok, rec: Math.round(t), ...extra });
+}
+function nextAfter(ok, fn, slow = 1500) {
+  S.phase = "pause"; render();
+  setTimeout(() => { if (S.phase === "pause") fn(); }, ok ? 250 : slow);
 }
 
-// ---------- Predict ----------
-// Før-kube, algoritme og etter-kube (F2L løst): løser algoritmen Før? Halvparten er ekte.
-// Svar med kuben: U = ja, U' = nei (eller knappene).
+// ---------- Gjenkjenning: Pre-AUF og Navn (fast bilde) ----------
+// Pre-AUF: hvilken AUF trenger casen før algoritmen? Knapper/piltaster, eller gjør U-trekkene på kuben
+// og start algoritmen (første trekk som ikke er U bekrefter). Navn: hvilken algoritme hører til casen?
+function newRecogRound() {
+  const c = pickCase();
+  if (!c) { S.phase = "idle"; S.cur = null; render(); return; }
+  const r = makeInstance(c);
+  r.net = 0;
+  if (S.recog.sub === "name") {
+    const pool = shuffle([...selected().filter((n) => n !== c.n), ...shuffle(CASES.map((x) => x.n).filter((n) => n !== c.n && !S.selection.has(n)))]);
+    r.options = shuffle([c.n, ...pool.slice(0, S.recog.options - 1)]);
+  }
+  S.recog.round = r;
+  S.cur = { c, colorShift: r.colorShift };
+  S.phase = "recog";
+  render();
+}
+function answerAuf(k) {
+  const r = S.recog.round;
+  if (!r || S.phase !== "recog" || S.recog.sub !== "auf") return;
+  const ok = r.valid.has(k), t = performance.now() - r.t0;
+  record(S.recog, "recog-auf", r.c.n, ok, t, { auf: r.aufAmt, answer: k });
+  flash(ok ? `✓ ${fmt(t)}` : `✗ ${AUF_NAME[r.aufAmt]} (du: ${AUF_NAME[k]})`);
+  nextAfter(ok, newRecogRound);
+}
+function answerName(n) {
+  const r = S.recog.round;
+  if (!r || S.phase !== "recog" || S.recog.sub !== "name") return;
+  const ok = n === r.c.n, t = performance.now() - r.t0;
+  record(S.recog, "recog-name", r.c.n, ok, t, { answer: n });
+  flash(ok ? `✓ ${fmt(t)}` : `✗ ${r.c.alg}`);
+  nextAfter(ok, newRecogRound, 2200);
+}
+function recogPanel() {
+  const R = S.recog, r = R.round;
+  if (!r) return "";
+  const img = `<div class="recogcube">${cubeSvg(r.state, { colorMap: colorMapFor(r.colorShift) })}</div>`;
+  if (R.sub === "auf") {
+    const keys = ["↓", "←", "↑", "→"];
+    return `${img}<div class="pred-q">Hvilken AUF før algoritmen?</div>
+      <div class="o-keys">${AUF_NAME.map((nm, k) => `<button data-auf="${k}">${nm} <kbd>${keys[k]}</kbd></button>`).join("")}</div>
+      <div class="muted small">Med kuben: gjør U-trekkene og start algoritmen.</div>${scoreLine(R)}`;
+  }
+  const thumb = (n) => R.images ? cubeSvg(simplify(invert(expand(CASE_BY_N[n].alg).moves)).reduce((st, m) => turn(st, m.face, m.amt), SOLVED)) : "";
+  return `${img}<div class="pred-q">Hvilken algoritme løser casen?</div>
+    <div class="nameopts">${r.options.map((n, i) => `<button data-name="${n}">${thumb(n)}<span>${CASE_BY_N[n].alg}</span> <kbd>${i + 1}</kbd></button>`).join("")}</div>${scoreLine(R)}`;
+}
+
+// ---------- Predict: Predict og Review ----------
+// Predict: Før, algoritme og Etter (F2L løst) – virker algoritmen? Halvparten er ekte.
+// Svar: knapper, piltaster (← nei, → ja) eller kuben (U' nei, U ja).
 function newPredictRound() {
   const c = pickCase();
-  if (!c) { S.phase = "idle"; render(); return; }
+  if (!c) { S.phase = "idle"; S.cur = null; render(); return; }
   const alg = expand(c.alg);
   const pre = S.mixLL ? [...expand(LL_SCRAMBLERS[rnd(LL_SCRAMBLERS.length)]).moves, { face: "D", amt: rnd(4) }] : [];
   const genuine = Math.random() < 0.5;
@@ -427,14 +475,11 @@ function newPredictRound() {
   if (!genuine) {
     // Falsk: casen med en annen AUF. Står paret i sporet (37–41), gjør AUF ingen forskjell – da en annen case.
     before = build(alg.moves, 1 + rnd(3));
-    for (let i = 0; solves(before) && i < 200; i++) {
-      const d = CASES[rnd(CASES.length)];
-      before = build(expand(d.alg).moves, rnd(4));
-    }
+    for (let i = 0; solves(before) && i < 200; i++) before = build(expand(CASES[rnd(CASES.length)].alg).moves, rnd(4));
   }
-  const solvedAfter = simplify([...pre]).reduce((st, m) => turn(st, m.face, m.amt), SOLVED);
-  S.predict.round = { c, genuine, before, after: genuine ? alg.moves.reduce((x, m) => turn(x, m.face, m.amt), before) : solvedAfter, colorShift: S.colorSwap ? rnd(4) : 0, t0: performance.now() };
-  S.cur = { c, colorShift: S.predict.round.colorShift }; // for kort/tittel
+  const after = pre.reduce((st, m) => turn(st, m.face, m.amt), SOLVED);
+  S.predict.round = { c, genuine, before, after, colorShift: S.colorSwap ? rnd(4) : 0, t0: performance.now() };
+  S.cur = { c, colorShift: S.predict.round.colorShift };
   S.phase = "predict";
   render();
 }
@@ -442,26 +487,56 @@ function predictAnswer(yes) {
   const P = S.predict, r = P.round;
   if (!r || S.phase !== "predict") return;
   const ok = yes === r.genuine, t = performance.now() - r.t0;
-  P.combo = ok ? P.combo + 1 : 0; P.best = Math.max(P.best, P.combo);
-  P.results.push({ n: r.c.n, ok, t });
-  log({ block: S.block ? S.block.id : null, trainer: "f2l", mode: "predict", case: r.c.n, ok, rec: Math.round(t), genuine: r.genuine, answer: yes });
+  record(P, "predict", r.c.n, ok, t, { genuine: r.genuine, answer: yes, view: P.view });
   flash(ok ? `✓ ${fmt(t)}` : r.genuine ? "✗ Den virket" : "✗ Den virket ikke");
-  S.phase = "pause"; render();
-  setTimeout(() => { if (S.phase === "pause") newPredictRound(); }, ok ? 300 : 1500);
+  nextAfter(ok, newPredictRound);
 }
 function predictPanel() {
   const r = S.predict.round, P = S.predict;
   if (!r) return "";
   const map = colorMapFor(r.colorShift);
-  const ok = P.results.filter((x) => x.ok);
   return `<div class="pred">
-      <div><div class="muted small">FØR</div>${cubeSvg(r.before, { colorMap: map })}</div>
+      <div><div class="muted small">FØR</div>${cubeSvg(r.before, { colorMap: map, show: P.view })}</div>
       <div class="pred-alg">${r.c.alg}<span>→</span></div>
       <div><div class="muted small">ETTER</div>${cubeSvg(r.after, { colorMap: map })}</div>
     </div>
     <div class="pred-q">Gjør algoritmen Før om til Etter?</div>
-    <div class="o-keys"><button id="p-no">Nei <kbd>U'</kbd></button><button id="p-yes" class="next">Ja <kbd>U</kbd></button></div>
-    <div class="radprog">Riktig ${ok.length}/${P.results.length} · rekke ${P.combo} (beste ${P.best})</div>${stripHtml(P.results)}`;
+    <div class="o-keys"><button id="p-no">Nei <kbd>←</kbd></button><button id="p-yes" class="next">Ja <kbd>→</kbd></button></div>${scoreLine(P)}`;
+}
+
+// Review: bla gjennom casene i en 3D-spiller, spill av algoritmen, eller bygg casen fra en ny tilstand.
+function reviewShow(delta = 0, fresh = true) {
+  const sel = selected();
+  if (!sel.length) { S.phase = "idle"; S.cur = null; render(); return; }
+  const V = S.review;
+  clearInterval(V.timer); V.timer = null;
+  V.idx = ((V.idx + delta) % sel.length + sel.length) % sel.length;
+  if (fresh || !V.inst || V.inst.c.n !== sel[V.idx]) V.inst = makeInstance(CASE_BY_N[sel[V.idx]]);
+  V.inst.state = V.inst.start;
+  S.cur = { c: V.inst.c, colorShift: V.inst.colorShift };
+  S.phase = "review";
+  if (view3d) { view3d.setColorShift(V.inst.colorShift); view3d.set(V.inst.state, true); }
+  render();
+}
+function reviewPlay() {
+  const V = S.review, inst = V.inst;
+  if (!inst || !view3d) return;
+  reviewShow(0, false);
+  let i = 0;
+  V.timer = setInterval(() => {
+    const m = inst.items[i++];
+    if (!m) { clearInterval(V.timer); V.timer = null; return; }
+    inst.state = turn(inst.state, m.face, m.amt);
+    view3d.move(m.face, m.amt, inst.state, true);
+  }, 1000 / S.predict.tps);
+}
+function reviewPanel() {
+  const V = S.review, inst = V.inst;
+  if (!inst) return "";
+  const c = inst.c, sel = selected();
+  return `<div class="caseinfo"><b>F2L ${c.n}</b> <span class="muted">bok ${c.bookNo}, s. ${c.bookPage} · ${V.idx + 1} av ${sel.length}</span></div>
+    <div class="alg">${inst.aufAmt ? `<span class="mv auf">(${AUF_NAME[inst.aufAmt]})</span>` : ""}${inst.alg.tokens.map((t, i) => (inst.alg.moves[0] && inst.alg.moves[0].face === "D" && inst.alg.moves[0].tok === i ? "" : `<span class="mv">${t}</span>`)).join("")}</div>
+    <div class="o-keys"><button id="rv-prev">◀ Forrige</button><button id="rv-play" class="next">▶ Spill av</button><button id="rv-rand">Ny variant</button><button id="rv-next">Neste ▶</button></div>`;
 }
 
 // ---------- snarveier ----------
@@ -476,6 +551,7 @@ function fourInRow(list, face, a, now) {
 }
 
 function toggleGuided() {
+  if (S.mode === "recog" || S.mode === "predict") { flash("Guidet gjelder ikke her"); return; }
   if (S.mode === "guided") {
     S.mode = S.baseMode; S.repeat = null;
     flash(MODE_NAME[S.mode]);
@@ -522,7 +598,13 @@ function flash(text) {
 function onMove(face, a) {
   const now = performance.now();
   if (S.mode === "predict") { if (S.phase === "predict" && face === "D") predictAnswer(a === 1); return; }
-  if (S.mode === "recog" && S.phase === "case") { recogMove(face, a, now); return; }
+  if (S.mode === "recog") {
+    const r = S.recog.round;
+    if (S.phase !== "recog" || S.recog.sub !== "auf" || !r) return;
+    if (face === "D") { r.net = (r.net + a) % 4; r.state = turn(r.state, "D", a); render(); }
+    else answerAuf(r.net); // første trekk som ikke er U bekrefter AUF-en du har gjort
+    return;
+  }
   if (S.phase === "result") {
     // Gul (U, kubens D) = videre. Rød L4 = gjenta samme case. Oransje R4 = guidet.
     S.resultRecent.push({ face, a, t: now });
@@ -714,7 +796,7 @@ function render() {
   if (S.phase === "idle") {
     main = `<div class="big">Velg minst én case.</div>`;
   } else if (S.mode === "predict") {
-    main = predictPanel();
+    main = S.predict.sub === "review" ? reviewPanel() : predictPanel();
   } else if (S.mode === "recog") {
     main = recogPanel();
   } else {
@@ -727,9 +809,16 @@ function render() {
       ${S.mode === "recap" && S.recap.queue.length ? `<div class="radprog">${Math.min(S.recap.idx + 1, S.recap.queue.length)} av ${S.recap.queue.length}</div>` : ""}`;
   }
   $("phase").innerHTML = main;
-  $("stage").hidden = S.mode === "predict";
+  const still = S.mode === "recog" || (S.mode === "predict" && S.predict.sub !== "review"); // fast 2D-bilde
+  $("stage").hidden = still;
+  if (view3d) view3d.fixed = S.mode === "predict" || S.mode === "recog";
+  $("retry").hidden = $("calib").hidden = S.mode === "recog" || S.mode === "predict";
+  document.querySelector('[data-mode="guided"]').disabled = S.mode === "recog" || S.mode === "predict";
   if ($("p-yes")) { $("p-yes").onclick = () => predictAnswer(true); $("p-no").onclick = () => predictAnswer(false); }
-  const rem = S.phase === "case" && cur && S.mode !== "recog" ? rotateReminder(cur) : "";
+  if ($("rv-play")) { $("rv-play").onclick = reviewPlay; $("rv-prev").onclick = () => reviewShow(-1); $("rv-next").onclick = () => reviewShow(1); $("rv-rand").onclick = () => reviewShow(0); }
+  document.querySelectorAll("[data-auf]").forEach((b) => (b.onclick = () => answerAuf(+b.dataset.auf)));
+  document.querySelectorAll("[data-name]").forEach((b) => (b.onclick = () => answerName(+b.dataset.name)));
+  const rem = S.phase === "case" && cur ? rotateReminder(cur) : "";
   $("remind").innerHTML = rem;
   $("remind").classList.toggle("on", !!rem);
   $("main").classList.toggle("guided", guided && !!cur);
@@ -740,7 +829,8 @@ function render() {
   $("sel-count").textContent = `${S.selection.size} valgt`;
   document.querySelectorAll("[data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === S.mode));
   const base = S.mode === "guided" ? S.baseMode : S.mode;
-  for (const m of ["rad", "learn", "recap", "weighted"]) $(`${m}-opts`).hidden = base !== m;
+  for (const m of ["rad", "learn", "recap", "weighted", "recog", "predict"]) $(`${m}-opts`).hidden = base !== m;
+  $("recog-name-opts").hidden = S.recog.sub !== "name";
   $("rad-n").value = String(S.rad.n); $("rad-order").value = S.rad.order;
 }
 
@@ -799,6 +889,26 @@ function bind() {
   num("recap-inst", (v) => { S.recap.instant = v; buildRecap(); startCase(); });
   num("recap-order", (v) => { S.recap.order = v; buildRecap(); startCase(); });
   num("w-str", (v) => { S.weighted.strength = +v; });
+  num("recog-sub", (v) => { S.recog.sub = v; startCase(); });
+  num("recog-n", (v) => { S.recog.options = +v; startCase(); });
+  num("recog-img", (v) => { S.recog.images = v; });
+  num("pred-sub", (v) => { S.predict.sub = v; clearInterval(S.review.timer); startCase(); });
+  num("pred-view", (v) => { S.predict.view = v; });
+  num("pred-tps", (v) => { S.predict.tps = +v; });
+  addEventListener("keydown", (e) => {
+    if (e.target.matches("input, select, textarea")) return;
+    if (S.phase === "recog" && S.recog.sub === "auf") {
+      const k = { ArrowDown: 0, ArrowLeft: 1, ArrowUp: 2, ArrowRight: 3 }[e.key];
+      if (k != null) { e.preventDefault(); answerAuf(k); }
+    } else if (S.phase === "recog" && S.recog.sub === "name") {
+      const n = S.recog.round.options[+e.key - 1];
+      if (n != null) answerName(n);
+    } else if (S.phase === "predict") {
+      if (e.key === "ArrowLeft") predictAnswer(false); else if (e.key === "ArrowRight") predictAnswer(true);
+    } else if (S.phase === "review") {
+      if (e.key === "ArrowLeft") reviewShow(-1); else if (e.key === "ArrowRight") reviewShow(1); else if (e.key === " ") { e.preventDefault(); reviewPlay(); }
+    }
+  });
   $("toggle-algs").addEventListener("click", () => { $("algs-wrap").hidden = !$("algs-wrap").hidden; if (!$("algs-wrap").hidden) renderAlgs(); });
   $("algs").addEventListener("click", (e) => { const b = e.target.closest("[data-alg]"); if (b) showAlg(+b.dataset.alg); });
   $("rad-n").addEventListener("change", (e) => { S.rad.n = +e.target.value; S.rad.streak = 0; render(); });

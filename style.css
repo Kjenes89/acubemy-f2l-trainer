@@ -151,3 +151,9 @@ input[type=number] { background: #1b2027; color: var(--text); border: 1px solid 
 .pred-alg span { color: var(--muted); font-size: 28px; }
 .pred-q { font-size: 18px; }
 .o-keys button { border-radius: 999px; padding: 8px 18px; }
+
+.recogcube svg { width: 240px; height: 256px; }
+.nameopts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; max-width: 520px; }
+.nameopts button { display: flex; flex-direction: column; align-items: center; gap: 4px; font: 15px ui-monospace, Consolas, monospace; padding: 10px; }
+.nameopts svg { width: 80px; height: 86px; }
+button:disabled { opacity: .4; cursor: default; }

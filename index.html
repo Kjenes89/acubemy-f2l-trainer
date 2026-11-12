@@ -32,6 +32,14 @@
     <select id="recap-rep"><option>1</option><option selected>2</option><option>3</option><option>5</option></select> ganger hver ·
     <label><input type="checkbox" id="recap-inst"> etter hverandre</label> ·
     <select id="recap-order"><option value="random" selected>tilfeldig</option><option value="order">i rekkefølge</option></select></span>
+  <span id="recog-opts" class="chk" hidden>
+    <select id="recog-sub"><option value="auf" selected>Pre-AUF</option><option value="name">Navn (algoritme)</option></select>
+    <span id="recog-name-opts"> · <select id="recog-n"><option>2</option><option>3</option><option selected>4</option><option>6</option></select> valg ·
+    <label><input type="checkbox" id="recog-img"> bilder på valgene</label></span></span>
+  <span id="predict-opts" class="chk" hidden>
+    <select id="pred-sub"><option value="predict" selected>Predict</option><option value="review">Review</option></select> · vis
+    <select id="pred-view"><option value="pair" selected>paret</option><option value="corner">hjørnet</option><option value="edge">kanten</option></select> · TPS
+    <select id="pred-tps"><option>1</option><option>2</option><option selected>3</option><option>5</option></select></span>
   <span id="weighted-opts" class="chk" hidden>Styrke
     <select id="w-str"><option value="1">svak</option><option value="2" selected>middels</option><option value="4">sterk</option></select></span>
   <span id="rad-opts" class="chk" hidden>
@@ -76,7 +84,7 @@
   </aside>
 </main>
 
-<footer class="muted small"><span id="logstatus"></span><br>Snarveier (fire like trekk) under casen: gul U4 = kalibrer gyro · hvit D4 = samme case igjen · oransje R4 = guidet av/på · rød L4 = neste case. I resultatvinduet: U = videre · rød L4 = gjenta · oransje R4 = guidet<br>M2.5 · casen lages på skjermen og trekkene dine brukes på den – den fysiske kuben trenger ikke stå i noen bestemt tilstand · FR-spor · hold grønn foran og hvit ned, og se på skjermen · algoritmene vises som i boka, og rotasjonene må gjøres (kontrolleres med gyroen)</footer>
+<footer class="muted small"><span id="logstatus"></span><br>Snarveier (fire like trekk) under casen: gul U4 = kalibrer gyro · hvit D4 = samme case igjen · oransje R4 = guidet av/på · rød L4 = neste case. I resultatvinduet: U = videre · rød L4 = gjenta · oransje R4 = guidet<br>M2.6 · casen lages på skjermen og trekkene dine brukes på den – den fysiske kuben trenger ikke stå i noen bestemt tilstand · FR-spor · hold grønn foran og hvit ned, og se på skjermen · algoritmene vises som i boka, og rotasjonene må gjøres (kontrolleres med gyroen)</footer>
 
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }</script>
 <script src="https://cdn.jsdelivr.net/gh/acubemy/plugin-sdk@1/v1.js"></script>
