@@ -302,7 +302,8 @@ async function loadHist() {
       const j = await r.json();
       S.hist = (j.trainers && j.trainers.f2l) || j.cases || {};
       S.blocksEnded = j.blocksEnded || [];
-      S.blockSolves = j.blockSolves || []; // avsluttede blokker fra loggen (✓ overlever omlasting)
+      S.blockSolves = j.blockSolves || [];
+      S.blockProgress = j.blockProgress || []; // avsluttede blokker fra loggen (✓ overlever omlasting)
       renderPlan();
     }
   } catch (e) { /* uten historikk brukes bare økta */ }
@@ -340,6 +341,31 @@ function blockDesc(b) {
   return `${b.minutes ? b.minutes + " min · " : "én runde · "}${what} · ${b.cases.join(", ")}${b.slots ? " · " + b.slots.join("/") : ""}`;
 }
 
+// ---------- brukt tid i tidsblokker (logges, så blokka kan fortsette etter omlasting) ----------
+// Brukt tid = planlagt tid − gjenstående (pause flytter slutten, så pause teller ikke). Over planlagt tid = overtid.
+function blockElapsed(b) {
+  if (!b || !b.minutes || !isFinite(b.end)) return null;
+  return Math.max(0, Math.round(b.minutes * 60000 - (b.end - (b.pausedAt || performance.now()))));
+}
+function blockProgressLog(b, trainer) {
+  const elapsed = blockElapsed(b);
+  if (elapsed == null) return;
+  const rec = { event: "block-progress", block: b.id, elapsed, trainer };
+  log(rec);
+  (S.blockLocal ||= []).push({ kind: "progress", block: b.id, t: new Date().toISOString(), elapsed });
+}
+// Sist kjente brukte tid for blokka på plandagen; 0 hvis den ikke er startet eller er avsluttet etterpå.
+function progressFor(id) {
+  const day = (t) => new Date(t).toLocaleDateString("sv-SE", { timeZone: "Europe/Oslo" });
+  const ev = [
+    ...(S.blockProgress || []).map((e) => ({ ...e, kind: "progress" })),
+    ...(S.blocksEnded || []).map((e) => ({ ...e, kind: "end" })),
+    ...(S.blockLocal || []),
+  ].filter((e) => e.block === id && e.t && (!S.plan || !S.plan.date || day(e.t) === S.plan.date)).sort((a, b) => (a.t < b.t ? -1 : 1));
+  const last = ev[ev.length - 1];
+  return last && last.kind === "progress" ? last.elapsed || 0 : 0;
+}
+
 // Slow solves i blokka på plandagen: fra loggen (lastet ved oppstart) og fra denne økta.
 function solvesDone(id) {
   const day = (t) => new Date(t).toLocaleDateString("sv-SE", { timeZone: "Europe/Oslo" });
@@ -366,7 +392,9 @@ function startBlock(id) {
   if (mode === "recap") { S.recap.repeat = b.repeat || 2; S.recap.instant = !!b.instant; S.recap.order = b.order || "random"; }
   if (mode === "learn") { S.learn.threshold = b.threshold || S.learn.threshold; }
   setMode(mode, { start: false });
-  S.block = { id: b.id, name: b.name, minutes, untilRound: oneRound, end: minutes ? performance.now() + minutes * 60000 : Infinity };
+  const prev = minutes ? progressFor(b.id) : 0; // fortsett der blokka slapp (samme dag)
+  S.block = { id: b.id, name: b.name, minutes, untilRound: oneRound, end: minutes ? performance.now() + minutes * 60000 - prev : Infinity, lastProgress: performance.now() };
+  if (prev) setTimeout(() => flash(`Fortsetter på ${mmss(prev)}`), 50);
   if (mode === "slow") { S.block.solves = b.solves || null; S.block.doneSolves = solvesDone(b.id); if (b.solves && !b.minutes) S.block.end = Infinity; }
   log({ event: "block-start", block: b.id, minutes: b.minutes, cases: b.cases, mode: S.mode });
   renderPlan();
@@ -387,6 +415,7 @@ function blockTick() {
     el.textContent = (S.block.pausedAt ? "⏸ " : "") + (!isFinite(left) ? `${Math.min(q.idx + 1, q.queue.length)}/${q.queue.length}` : left > 0 ? mmss(left) : "+" + mmss(-left));
     el.classList.toggle("over", isFinite(left) && left <= 0);
   }
+  if (!S.block.pausedAt && S.block.minutes && performance.now() - S.block.lastProgress >= 30000) { S.block.lastProgress = performance.now(); blockProgressLog(S.block, "f2l"); }
   // Tiden ute: blokken fortsetter på overtid (vises som +m:ss) til du trykker «Avslutt blokk».
   // Slow solve med tidsgrense avsluttes som før (kuben skal være klar for neste blokk).
   if (left <= 0 && !S.block.warned) {
@@ -410,6 +439,7 @@ function togglePause() {
     if (S.mode !== "slow" && S.phase === "case" && S.cur) startCase(true);
   } else {
     S.block.pausedAt = performance.now();
+    blockProgressLog(S.block, "f2l");
     flash("Pause");
   }
   renderPlan();
@@ -418,8 +448,9 @@ function togglePause() {
 
 function endBlock() {
   if (!S.block) return;
-  log({ event: "block-end", block: S.block.id });
+  log({ event: "block-end", block: S.block.id, elapsed: blockElapsed(S.block) });
   flush();
+  (S.blockLocal ||= []).push({ kind: "end", block: S.block.id, t: new Date().toISOString() });
   S.blocksDone.add(S.block.id);
   const name = S.block.name;
   S.block = null;
@@ -1273,7 +1304,9 @@ async function boot() {
     console.warn("3D-visning utilgjengelig, bruker 2D", e);
     $("cube3d").hidden = true;
   }
-  PLL.init({ view3d, beep, onBlockDone: (id) => { S.blocksDone.add(id); renderPlan(); } });
+  PLL.init({ view3d, beep, progressFor, mmss,
+    onProgress: (e) => (S.blockLocal ||= []).push(e),
+    onBlockDone: (id) => { (S.blockLocal ||= []).push({ kind: "end", block: id, t: new Date().toISOString() }); S.blocksDone.add(id); renderPlan(); } });
   document.querySelectorAll("[data-trainer]").forEach((b) => b.addEventListener("click", () => switchTrainer(b.dataset.trainer)));
   if (window.acubemy) {
     acubemy.onDeviceChange((d) => {

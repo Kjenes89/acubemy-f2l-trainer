@@ -284,7 +284,10 @@ export function startBlock(b) {
   setMode(b.mode && MODE_NAME[b.mode] && b.mode !== "guided" ? b.mode : "drill", false);
   if (P.mode === "rad") { P.rad.n = b.n || 3; buildRad(); }
   const oneRound = !b.minutes && P.mode === "rad";
-  P.block = { id: b.id, name: b.name, end: oneRound ? Infinity : performance.now() + (b.minutes || 5) * 60000 };
+  const minutes = oneRound ? 0 : b.minutes || 5;
+  const prev = minutes && ctx.progressFor ? ctx.progressFor(b.id) : 0; // fortsett der blokka slapp (samme dag)
+  P.block = { id: b.id, name: b.name, minutes, end: oneRound ? Infinity : performance.now() + minutes * 60000 - prev, lastProgress: performance.now() };
+  if (prev && ctx.mmss) setTimeout(() => flash(`Fortsetter på ${ctx.mmss(prev)}`), 50);
   log({ event: "block-start", block: b.id, minutes: b.minutes, cases: b.cases, mode: P.mode, trainer: "pll" });
   renderPicker();
   startCase();
@@ -295,21 +298,32 @@ function blockTick() {
   const el = $("p-blocktimer");
   const mmss = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
   if (el) el.textContent = (P.block.pausedAt ? "⏸ " : "") + (!isFinite(left) ? `${Math.min(P.rad.idx + 1, P.rad.queue.length)}/${P.rad.queue.length}` : left > 0 ? mmss(left) : "+" + mmss(-left));
+  if (!P.block.pausedAt && P.block.minutes && performance.now() - P.block.lastProgress >= 30000) { P.block.lastProgress = performance.now(); progressLog(); }
   // Tiden ute: blokken går på overtid til du avslutter selv.
   if (left <= 0 && !P.block.warned) { P.block.warned = true; ctx.beep(3); flash("Tiden er ute – fortsett eller avslutt"); }
+}
+function elapsedOf(b) {
+  if (!b || !b.minutes || !isFinite(b.end)) return null;
+  return Math.max(0, Math.round(b.minutes * 60000 - (b.end - (b.pausedAt || performance.now()))));
+}
+function progressLog() {
+  const elapsed = elapsedOf(P.block);
+  if (elapsed == null) return;
+  log({ event: "block-progress", block: P.block.id, elapsed, trainer: "pll" });
+  if (ctx.onProgress) ctx.onProgress({ kind: "progress", block: P.block.id, t: new Date().toISOString(), elapsed });
 }
 function togglePause() {
   if (!P.block) return;
   if (P.block.pausedAt) {
     P.block.end += performance.now() - P.block.pausedAt; P.block.pausedAt = null; flash("Fortsetter");
     if (P.phase === "case" && P.cur) { startCase(true); return; }
-  } else { P.block.pausedAt = performance.now(); flash("Pause"); }
+  } else { P.block.pausedAt = performance.now(); progressLog(); flash("Pause"); }
   render();
 }
 setInterval(() => { if (active && P.block) blockTick(); }, 500);
 function endBlock() {
   if (!P.block) return;
-  log({ event: "block-end", block: P.block.id, trainer: "pll" });
+  log({ event: "block-end", block: P.block.id, trainer: "pll", elapsed: elapsedOf(P.block) });
   flush();
   const { id, name } = P.block;
   P.block = null;
