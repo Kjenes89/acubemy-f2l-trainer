@@ -54,7 +54,10 @@ export function sameSolution(executed, algMoves, { strictGrip = true } = {}) {
   if (canonical(executed) !== canonical(algMoves)) return false;
   if (!strictGrip) return true; // algoritmer med brede trekk/slices: grepet kan ikke leses sikkert nok
   const a = withGrips(executed), b = withGrips(algMoves);
-  return a.length === b.length && a.every((m, i) => m.face === b[i].face && m.amt === b[i].amt && m.grips.some((g) => sameGrip(g, b[i].grips[0])));
+  // U- og D-trekk er de samme før og etter en y-rotasjon (de ligger på rotasjonsaksen): der holder det at
+  // opp/ned stemmer, ellers ville U' rett før y bli avvist hvis gyroen leser rotasjonen litt tidlig.
+  const okGrip = (m, e) => (m.face === e.U || m.face === e.D ? (g) => g.U === e.U : (g) => sameGrip(g, e));
+  return a.length === b.length && a.every((m, i) => m.face === b[i].face && m.amt === b[i].amt && (!b[i].grips[0] || m.grips.some(okGrip(m, b[i].grips[0]))));
 }
 
 // Det du gjorde, skrevet slik du holdt kuben (grep fra gyroen ved hvert trekk), med rotasjonene du tok.

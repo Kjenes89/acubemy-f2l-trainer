@@ -169,6 +169,12 @@ export function onMove(face, a) {
   if (cur.execStart == null && face !== "D") cur.execStart = now;
   else if (cur.execStart != null && cur.startSet.has(cur.state)) cur.execStart = null; // tilbake i casen: tiden nullstilles
   cur.recent = [...cur.recent, { face, a, t: now }].slice(-4);
+  // Hvit D4 (kubens U) = samme case på nytt, rød L4 (kubens R) = neste case – som i F2L-drillen.
+  // Casen er virtuell, så etter en tabbe trenger du ikke rette opp kuben for hånd.
+  if (face === "U" && fourInRow(cur.recent, face, a, now)) { flash("Samme case igjen"); startCase(true); return; }
+  if (face === "R" && fourInRow(cur.recent, face, a, now)) {
+    flash("Neste case"); P.repeat = null; if (P.mode === "rad") { P.rad.idx++; P.rad.streak = 0; } startCase(); return;
+  }
   if (face === "D" && fourInRow(cur.recent, face, a, now)) {
     // Gul U4 = kalibrer gyro. Fire U-trekk endrer ingenting, så de tas ut av forsøket.
     if (window.acubemy) acubemy.calibrateGyro();
