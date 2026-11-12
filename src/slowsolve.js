@@ -162,6 +162,8 @@ export function judgePair({ start, moves, slot, startGrip = null }) {
     if (moves[k].face !== "D" && crossSolved(states[k]) && caseOf(states[k], slot) != null) j = k;
   }
   if (j < 0) return { verdict: "ikke-vurdert" };
+  // Det du gjorde fra casens start, slik gyroen leste grepet (vises og logges også for riktige par).
+  const didFrom = (k) => didInYourGrip(moves.slice(k), gripsOf(moves[k])[0] || startGrip || START_GRIP);
   const heldAt = (k) => new Set([...gripsOf(moves[k]), ...(gripsOf(moves[k]).length ? [] : [startGrip])].map((g) => heldSlot(slot, g)).filter(Boolean));
   const candGrips = (k) => withY([startGrip, ...moves.slice(0, k + 1).flatMap(gripsOf)]);
   const optionsFor = (n, g) => {
@@ -179,7 +181,7 @@ export function judgePair({ start, moves, slot, startGrip = null }) {
       for (const a of algs) {
         const strict = strictGrip(a) && !optionsFor(n, g).loose; // egne løsninger med fri rotasjon: bare resultatet teller
         if (!strict && !heldAt(j).has(held)) continue; // grepet kontrolleres ikke trekk for trekk, så sporet må være det du faktisk holdt
-        if (sameSolution(moves.slice(j), expand(a, g).moves, { strictGrip: strict })) return { verdict: "ok", n, held, alg: a, from: j, copy: !optionsFor(n, g).v || undefined };
+        if (sameSolution(moves.slice(j), expand(a, g).moves, { strictGrip: strict })) return { verdict: "ok", n, held, alg: a, from: j, did: didFrom(j), copy: !optionsFor(n, g).v || undefined };
       }
     }
   }
@@ -198,7 +200,7 @@ export function judgePair({ start, moves, slot, startGrip = null }) {
       for (const a of algs) {
         const strict = strictGrip(a) && !optionsFor(nk, g).loose;
         if (!strict && !heldAt(k).has(held)) continue;
-        if (sameSolution(moves.slice(k), expand(a, g).moves, { strictGrip: strict })) return { verdict: "ok", n: nk, held, alg: a, from: k, multislot: nk !== n ? n : undefined };
+        if (sameSolution(moves.slice(k), expand(a, g).moves, { strictGrip: strict })) return { verdict: "ok", n: nk, held, alg: a, from: k, did: didFrom(k), multislot: nk !== n ? n : undefined };
       }
     }
   }
