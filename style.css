@@ -188,3 +188,6 @@ button:disabled { opacity: .4; cursor: default; }
 #pinbox[hidden] { display: none !important; }
 #pinbox input { background: #0b0d10; color: var(--text); border: 1px solid #333b45; border-radius: 8px; padding: 6px 10px; font: inherit; }
 .blocktimer.over { color: var(--warn, #f59e0b); }
+button.pp { background: none; cursor: pointer; }
+.pp.sel { background: color-mix(in srgb, currentColor 18%, transparent); }
+.pairdetail { margin: 4px auto 8px; max-width: 640px; text-align: center; line-height: 1.6; }

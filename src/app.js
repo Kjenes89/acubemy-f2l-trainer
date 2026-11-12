@@ -760,6 +760,7 @@ function slowStart() {
 // én av casene i utvalget (målcasen) i et tilfeldig spor; de andre parene blandes fritt.
 function slowNewScramble() {
   const W = S.slow;
+  if (W.showPair && W.showPair.src === "cur") W.showPair = { src: "last", i: W.showPair.i }; // følger med til «forrige»
   W.pairs = []; W.corr = null; W.wrong = null; W.note = null; W.f2l = false; W.retry = null; W.guide = null; W.guideAfter = false;
   if (!crossSolved(S.facelets)) { W.phase = "needcross"; W.target = null; return; }
   W.no++;
@@ -846,10 +847,11 @@ function slowCheck(now) {
     W.retry = null;
     const from = r.from != null ? seg.moves[r.from] : null;
     const rec = from ? from.t - seg.t : null, exec = from ? now - from.t : null;
-    W.pairs.push({ ...r, rec, exec });
+    const gs = from ? (from.grips && from.grips[0]) || from.grip : null; // grepet ved første trekk i casen
+    W.pairs.push({ ...r, rec, exec, gripStart: gs });
     log({ block: S.block ? S.block.id : null, trainer: "f2l", mode: "slowsolve", solve: W.no, case: r.n ?? null, slot: r.held || null,
       ok: r.verdict === "ok", verdict: r.verdict, rec: rec != null ? Math.round(rec) : null, exec: exec != null ? Math.round(exec) : null,
-      did: r.did, alg: r.alg || (r.hint && r.hint.alg) || null });
+      did: r.did, alg: r.alg || (r.hint && r.hint.alg) || null, grip: gs ? gs.D + gs.F : null });
     // Alarm for alle innførte caser (og det du har valgt). Caser uten bestemt løsning logges uten alarm.
     const inSel = r.n != null && (INTRODUCED.includes(r.n) || S.selection.has(r.n));
     if (r.verdict === "feil" && !inSel) {
@@ -963,11 +965,27 @@ function slowSynced(msg, reset = false) {
 }
 function slowPanel() {
   const W = S.slow;
-  const pairChip = (p) => {
+  const COLN = { U: "hvit", D: "gul", F: "grønn", B: "blå", R: "rød", L: "oransje" };
+  const pairChip = (src) => (p, i) => {
     const cls = { ok: "ok", feil: "bad", "ikke-avtalt": "warn" }[p.verdict] || "muted";
-    return `<span class="pp ${cls}" title="${p.verdict}${p.did ? " · du gjorde: " + p.did : ""}">${p.n ?? "?"}${p.held ? " " + p.held : ""}</span>`;
+    const sel = W.showPair && W.showPair.src === src && W.showPair.i === i ? " sel" : "";
+    return `<button class="pp ${cls}${sel}" data-src="${src}" data-pi="${i}" title="Trykk for detaljer">${p.n ?? "?"}${p.held ? " " + p.held : ""}</button>`;
   };
-  const pairs = W.pairs.length ? `<div class="pps">${W.pairs.map(pairChip).join("")}</div>` : "";
+  // Detaljer for paret du trykket på: hva du gjorde, avtalt løsning og grepet gyroen leste ved første trekk.
+  const pairDetail = () => {
+    const sp = W.showPair;
+    const list = sp && (sp.src === "cur" ? W.pairs : W.last && W.last.pairs);
+    const p = list && list[sp.i];
+    if (!p) return "";
+    const vtxt = { ok: "riktig", feil: "feil løsning", "ikke-avtalt": "ingen avtalt løsning i det sporet", "ikke-vurdert": "ikke vurdert", utenfor: "ikke innført" }[p.verdict] || p.verdict;
+    const g = p.gripStart;
+    const alg = p.alg || (p.hint && p.hint.alg);
+    return `<div class="pairdetail small">F2L ${p.n ?? "?"}${p.held ? " i " + p.held : ""} – ${vtxt}${p.multislot ? ` (via ledig spor fra ${p.multislot})` : ""}
+      ${p.did ? `<div>Du gjorde: <b class="mono">${p.did}</b></div>` : ""}
+      ${alg ? `<div>Avtalt${p.hint && p.hint.rot ? ` (roter ${p.hint.rot}, ${p.hint.held})` : ""}: <b class="mono">${alg}</b></div>` : ""}
+      ${g ? `<div class="muted">Gyroen ved første trekk: ${COLN[g.D]} ned · ${COLN[g.F]} foran</div>` : ""}</div>`;
+  };
+  const pairs = W.pairs.length ? `<div class="pps">${W.pairs.map(pairChip("cur")).join("")}</div>${W.showPair && W.showPair.src === "cur" ? pairDetail() : ""}` : "";
   const last = W.last ? `<div class="muted small">Forrige: ${W.last.target ? `målcase ${W.last.target.n} · ` : ""}${W.last.ok} riktige · ${W.last.feil} feil · ${W.last.na} uten alarm · ${W.last.nv} ikke vurdert · ${fmt(W.last.ms)} s</div>` : "";
   if (W.phase === "scramble") {
     const items = W.tracker.items;
@@ -977,7 +995,7 @@ function slowPanel() {
     return `<div class="hint">Scramble ${W.no} – hold <b>hvit ned, grønn foran</b> · krysset står${W.target ? " · én av fokuscasene (utvalget i «Caser») er med" : ""}</div>
       <div class="scr">${chips(W.scramble.slice(0, Math.max(0, doneN)).map(heldName), "done")}${items.map((m, i) => `<span class="mv ${m.corr ? "bad" : i === firstOpen ? "now" : ""}">${heldName(m)}</span>`).join("")}</div>
       ${items.some((m) => m.corr) ? `<div class="slowbad small">Rødt = rett opp først</div>` : ""}
-      ${last}${W.last ? `<div class="pps">${W.last.pairs.map(pairChip).join("")}</div>` : ""}`;
+      ${last}${W.last ? `<div class="pps">${W.last.pairs.map(pairChip("last")).join("")}</div>${W.showPair && W.showPair.src === "last" ? pairDetail() : ""}` : ""}`;
   }
   if (W.phase === "correct" && W.wrong) {
     const r = W.wrong, g = liveGrip() || START_GRIP;
@@ -1207,6 +1225,11 @@ function render() {
   if ($("slow-skipcorr")) $("slow-skipcorr").onclick = slowSkipCorr;
   if ($("slow-guideafter")) $("slow-guideafter").onclick = () => { S.slow.guideAfter = !S.slow.guideAfter; render(); };
   if ($("slow-skipback")) $("slow-skipback").onclick = slowSkipBack;
+  document.querySelectorAll(".pp[data-pi]").forEach((b) => b.onclick = () => {
+    const sp = { src: b.dataset.src, i: +b.dataset.pi };
+    S.slow.showPair = S.slow.showPair && S.slow.showPair.src === sp.src && S.slow.showPair.i === sp.i ? null : sp;
+    render();
+  });
   if ($("slow-guide")) $("slow-guide").onclick = () => { slowStartGuide(); render(); };
   if ($("p-yes")) { $("p-yes").onclick = () => predictAnswer(true); $("p-no").onclick = () => predictAnswer(false); }
   if ($("rv-play")) { $("rv-play").onclick = reviewPlay; $("rv-prev").onclick = () => reviewShow(-1); $("rv-next").onclick = () => reviewShow(1); $("rv-rand").onclick = () => reviewShow(0); }
