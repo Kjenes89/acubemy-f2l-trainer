@@ -191,3 +191,5 @@ button:disabled { opacity: .4; cursor: default; }
 button.pp { background: none; cursor: pointer; }
 .pp.sel { background: color-mix(in srgb, currentColor 18%, transparent); }
 .pairdetail { margin: 4px auto 8px; max-width: 640px; text-align: center; line-height: 1.6; }
+.timer.fast { color: var(--good, #22c55e); }
+.pbline { color: #facc15; font-weight: 700; font-size: 1.15em; }

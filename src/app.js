@@ -1443,7 +1443,7 @@ async function boot() {
     console.warn("3D-visning utilgjengelig, bruker 2D", e);
     $("cube3d").hidden = true;
   }
-  PLL.init({ view3d, beep, progressFor, mmss,
+  PLL.init({ view3d, beep, progressFor, mmss, liveGrip,
     onProgress: (e) => (S.blockLocal ||= []).push(e),
     onBlockDone: (id) => { (S.blockLocal ||= []).push({ kind: "end", block: id, t: new Date().toISOString() }); S.blocksDone.add(id); renderPlan(); } });
   document.querySelectorAll("[data-trainer]").forEach((b) => b.addEventListener("click", () => switchTrainer(b.dataset.trainer)));

@@ -49,7 +49,7 @@ const P = {
 let ctx = null; // { view3d, beep, onBlockDone }
 if (typeof window !== "undefined") window.__pll = P; // for tester
 const $ = (id) => document.getElementById(id);
-const liveGrip = () => (ctx && ctx.view3d ? ctx.view3d.grip() : null);
+const liveGrip = () => (ctx && ctx.liveGrip ? ctx.liveGrip() : ctx && ctx.view3d ? ctx.view3d.grip() : null); // samme gyrokilde som F2L
 const MODE_NAME = { drill: "Drill", weighted: "Weighted", rad: "På rad", guided: "Guidet" };
 
 // ---------- casevalg ----------
@@ -118,13 +118,34 @@ function finish() {
   const ok = judge(cur.c, cur.executed);
   const guided = P.mode === "guided";
   const st = (P.stats[cur.c.name] ||= { reps: 0, ok: 0, times: [], rec: [], exec: [] });
+  // Referanser før dette forsøket: beste tid (14 dager + i dag) og medianen din (14 dager, ellers i dag).
+  const h = P.hist[cur.c.name] || {};
+  const prevBest = [h.best, ...st.times].filter((x) => x != null).reduce((a, b) => Math.min(a, b), Infinity);
+  const refMedian = h.medianTotal ?? median(st.times);
   st.reps++;
   if (ok) { st.ok++; if (!guided) { st.times.push(rec + exec); st.rec.push(rec); st.exec.push(exec); } }
-  P.last = { c: cur.c, ok, rec, exec, guided, did: didInYourGrip(cur.executed), median: median(st.times) };
+  // Post-AUF: tid fra siste trekk i algoritmen (siste trekk som ikke er U) til kuben er løst, og om
+  // post-AUF-en ble tatt rett (korteste vei, uten å gå feil vei først).
+  let lastAlg = -1;
+  cur.executed.forEach((m, i) => { if (m.face !== "D") lastAlg = i; });
+  let postMs = null, postOk = null;
+  if (lastAlg >= 0 && cur.executed[lastAlg].t != null) {
+    const tail = cur.executed.slice(lastAlg + 1);
+    const q = tail.reduce((n, m) => n + (m.amt === 2 ? 2 : 1), 0);
+    const need = cur.inst.post === 2 ? 2 : cur.inst.post ? 1 : 0;
+    postMs = need ? Math.round(end - cur.executed[lastAlg].t) : 0;
+    postOk = q === need;
+  }
+  const total = rec + exec;
+  const praise = !ok || guided ? null
+    : isFinite(prevBest) && total < prevBest ? { pb: true, text: `Ny pers på ${cur.c.name}! ${fmt(total)} (forrige ${fmt(prevBest)})` }
+    : refMedian != null && total < refMedian ? { pb: false, text: `Raskere enn medianen din (−${fmt(refMedian - total)} s)` } : null;
+  P.last = { c: cur.c, ok, rec, exec, guided, did: didInYourGrip(cur.executed), median: median(st.times), postMs, postOk, postNeed: cur.inst.post, praise };
   log({
     block: P.block ? P.block.id : null, trainer: "pll", mode: P.mode, case: cur.c.name, ok,
     rec: Math.round(rec), exec: Math.round(exec), did: P.last.did, alg: cur.c.exec,
     auf: cur.inst.pre, postAuf: cur.inst.post, colorShift: cur.inst.colorShift,
+    postAufMs: postMs, postAufOk: postOk,
   });
   if (P.mode === "rad" && !guided) {
     P.rad.streak = ok ? P.rad.streak + 1 : 0;
@@ -137,6 +158,7 @@ function finish() {
     return;
   }
   if (!ok) ctx.beep(1);
+  else if (praise && praise.pb) ctx.beep(2);
   P.phase = "result";
   P.resultRecent = [];
   render();
@@ -160,7 +182,7 @@ export function onMove(face, a) {
   const cur = P.cur;
   cur.state = turn(cur.state, face, a);
   if (ctx.view3d) ctx.view3d.move(face, a, cur.state, false);
-  const mv = { face, amt: a, grip: liveGrip() || cur.lastGrip || START_GRIP };
+  const mv = { face, amt: a, grip: liveGrip() || cur.lastGrip || START_GRIP, t: now };
   cur.lastGrip = mv.grip;
   mv.grips = [mv.grip];
   setTimeout(() => { const g = liveGrip(); if (g) mv.grips.push(g); }, 120);
@@ -239,8 +261,9 @@ function resultHtml() {
   const t = L.rec + L.exec;
   return `<div class="res">
     <div class="caseinfo"><b>${L.c.name}</b> ${L.ok ? `<span class="good">✓</span>` : `<span class="badtxt">✗ ikke din algoritme</span>`}</div>
-    <div class="timer">${fmt(t)}</div>
-    <div class="muted">gjenkjenning ${fmt(L.rec)} · utførelse ${fmt(L.exec)}${L.median != null ? ` · median ${fmt(L.median)}` : ""}</div>
+    <div class="timer${L.praise ? " fast" : ""}">${fmt(t)}</div>
+    ${L.praise ? `<div class="${L.praise.pb ? "pbline" : "okline"}">${L.praise.text}</div>` : ""}
+    <div class="muted">gjenkjenning ${fmt(L.rec)} · utførelse ${fmt(L.exec)}${L.median != null ? ` · median ${fmt(L.median)}` : ""}${L.postNeed && L.postMs != null ? ` · post-AUF ${fmt(L.postMs)} ${L.postOk ? "✓" : "✗ omvei"}` : ""}</div>
     ${L.ok ? "" : `<div class="cmp"><div>Du gjorde: ${L.did}</div><div>Skal være: ${L.c.exec}</div></div>`}
     <div class="muted small">U = ${L.ok ? "neste" : "samme case igjen"} · rød L4 = gjenta</div></div>`;
 }
