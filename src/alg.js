@@ -109,8 +109,24 @@ export function stripAuf(moves) {
   return s;
 }
 
+// Trekk på motstående flater (U og D, R og L, F og B) kan byttes om uten at resultatet endres
+// (f.eks. «U' D» = «D U'» i Ga). Fast rekkefølge, så slike par sammenlignes likt.
+const FACE_ORDER = "URFDLB";
+export function orderOpposites(moves) {
+  const out = moves.slice();
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (let i = 0; i + 1 < out.length; i++) {
+      const a = out[i], b = out[i + 1];
+      if (OPP[a.face] === b.face && FACE_ORDER.indexOf(a.face) > FACE_ORDER.indexOf(b.face)) { out[i] = b; out[i + 1] = a; changed = true; }
+    }
+  }
+  return out;
+}
+const OPP = { U: "D", D: "U", R: "L", L: "R", F: "B", B: "F" };
+
 export function canonical(moves) {
-  return stripAuf(simplify(moves)).map((m) => m.face + m.amt).join(" ");
+  return orderOpposites(stripAuf(simplify(moves))).map((m) => m.face + m.amt).join(" ");
 }
 
 /** Sensortrekk → notasjon i grepet (for visning av oppsett og retting). */

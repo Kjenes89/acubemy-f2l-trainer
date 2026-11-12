@@ -1,7 +1,7 @@
 // Ren løsningslogikk (ingen DOM): sporing av forventet trekkrekke, AUF, og sammenligning av
 // utført løsning mot valgt algoritme – inkludert grepet (rotasjonene) hvert trekk ble tatt i.
 import { OPPOSITE } from "./cube.js";
-import { canonical, sameGrip, yNeeded, START_GRIP } from "./alg.js";
+import { canonical, sameGrip, yNeeded, START_GRIP, orderOpposites } from "./alg.js";
 
 // ---------- sporing av forventet trekkrekke ----------
 export class Tracker {
@@ -45,7 +45,7 @@ export function withGrips(moves) {
   }
   while (out.length && out[0].face === "D") out.shift();
   while (out.length && out[out.length - 1].face === "D") out.pop();
-  return out;
+  return orderOpposites(out);
 }
 
 // Samme løsning som algoritmen? Samme trekk, og – når gyroen gir grep – hvert trekk tatt i samme grep
