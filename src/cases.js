@@ -59,9 +59,8 @@ Object.assign(SLOT_ALGS.BR, {"2": "U' R' U R", "3": "R' U' R", "6": "U R' U' R U
 // … f R f', 15 BR … f R f'), gjør Vegard samme resultat med vanlige flatetrekk (B' U' B osv., sett i eksporten).
 // Det er ikke bokas utførelse. Tatt ut igjen (Vegard 21:32): å låse hans egen variant ville øve inn en mulig uvane.
 // De er frie (ingen alarm) til bokas versjon (antakelig valgt for fingertricks) er testet etter Asker.
-// For disse fem er det resultatet som er låst, ikke rotasjonen: eksporten viser både B U B' og varianter med
-// rotasjon midt i (f.eks. «B d L'» = B U y' L', og y' L U L' i slow solve 12.11. 21:26). Alle godtas.
-export const OWN_LOOSE = { FL: [1], BL: [3], BR: [4, 12, 15] };
+// (21:29 ble de låst med fri rotasjon, OWN_LOOSE; erstattet 21:32 av at de er frie. Mekanismen står igjen, tom.)
+export const OWN_LOOSE = { FL: [], BL: [], BR: [] };
 export const SOLVE_LOCKED = {"FR": [1, 2, 3, 4, 5, 7, 14, 16, 17, 19, 20, 21, 22, 23, 27, 28, 34, 38], "FL": [2, 3, 4, 6, 8, 13, 18, 20, 22, 24, 33, 34], "BL": [1, 4, 5, 7, 14, 17, 19, 21, 23, 25, 27, 33], "BR": [2, 3, 6, 13, 18, 20, 22]};
 export const isSolveLocked = (n, slot) => !!(SOLVE_LOCKED[slot] && SOLVE_LOCKED[slot].includes(n));
 
