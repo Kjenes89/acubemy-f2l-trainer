@@ -4,7 +4,7 @@
 // og Vegard løser med hvit ned, så «U» i grepet er sensor D.
 import { SOLVED, STICKERS, OPPOSITE, turn, applyMoves } from "./cube.js";
 import { expand, invert, simplify, START_GRIP, rotateGrip, yNeeded, SENSOR_TO_HELD } from "./alg.js";
-import { CASES, variant } from "./cases.js";
+import { CASES, CASE_BY_N, variant } from "./cases.js";
 import { sameSolution, didInYourGrip } from "./solve.js";
 
 // ---------- brikker ----------
@@ -121,6 +121,22 @@ const uniqGrips = (list) => {
 // likevel stemme med algoritmen, så dette godtar ikke F' U' F for y' R' U' R.
 const withY = (list) => uniqGrips(list.filter(Boolean).flatMap((g) => [0, 1, 2, 3].map((t) => rotateGrip(g, "y", t))));
 
+// FR-løsningen (og alternativene) flyttet til et annet spor uten rotasjon: R/F/L/B byttes som om sporet
+// sto i FR. Kontrollert i simulator 12.11.: gir riktig case i riktig spor for alle 41 i FL, BL og BR.
+const CYC = ["F", "R", "B", "L"];
+const SHIFT = { FR: 0, BR: 1, BL: 2, FL: 3 };
+export const relabel = (alg, k) => alg.replace(/[FRBLfrbl]/g, (c) => {
+  const up = c.toUpperCase(), r = CYC[(CYC.indexOf(up) + k) % 4];
+  return c === up ? r : r.toLowerCase();
+});
+export function slotCopies(n, held) {
+  const c = CASE_BY_N[n];
+  if (!c || !(held in SHIFT) || held === "FR") return [];
+  // Bare løsninger uten rotasjon: en kopi med y' ville ellers gjøre F' U' F lik y' R' U' R (gyroen ser bare
+  // sluttgrepet), og du skal bare rotere der boka roterer.
+  return [c.alg, ...(c.alts || [])].filter((a) => !/[xyz]/.test(a)).map((a) => relabel(a, SHIFT[held]));
+}
+
 /**
  * Et par ble satt inn i `slot` (sensorspor). `start` = tilstanden da segmentet startet, `moves` = trekkene
  * siden (med grep fra gyroen), `startGrip` = grepet da segmentet startet.
@@ -150,14 +166,17 @@ export function judgePair({ start, moves, slot, startGrip = null }) {
   const optionsFor = (n, g) => {
     const held = heldSlot(slot, g);
     const v = held && variant(n, held);
-    return v ? { held, v, algs: [v.alg, ...(v.alts || [])] } : { held, v: null, algs: [] };
+    if (v) return { held, v, algs: [v.alg, ...(v.alts || [])] };
+    // Uten egen sporløsning: FR-løsningen flyttet til sporet (samme trekk sett fra sporet, f.eks. 1 i BL =
+    // U L U' L') godkjennes som riktig, men gir ingen alarm (v = null). Jf. «én løsning per case, alle spor» 31.10.
+    return { held, v: null, algs: held ? slotCopies(n, held) : [], copy: true };
   };
   {
     const n = caseOf(states[j], slot);
     for (const g of candGrips(j)) {
       const { held, algs } = optionsFor(n, g);
       for (const a of algs) {
-        if (sameSolution(moves.slice(j), expand(a, g).moves, { strictGrip: strictGrip(a) })) return { verdict: "ok", n, held, alg: a, from: j };
+        if (sameSolution(moves.slice(j), expand(a, g).moves, { strictGrip: strictGrip(a) })) return { verdict: "ok", n, held, alg: a, from: j, copy: !optionsFor(n, g).v || undefined };
       }
     }
   }

@@ -1,7 +1,7 @@
 // Slow solve: casetabell, vurdering av par mot avtalt løsning, retting tilbake.
 import { SOLVED, turn, applyMoves } from "../src/cube.js";
 import { expand, invert, START_GRIP, rotateGrip } from "../src/alg.js";
-import { CASES, SLOT_ALGS, CASE_BY_N } from "../src/cases.js";
+import { CASES, SLOT_ALGS, CASE_BY_N, variant } from "../src/cases.js";
 import { judgePair, CASE_TABLE, caseOf, solvedSlots, crossSolved, makeCrossScramble, makeTargetScramble, heldSlot, SENSOR_SLOTS } from "../src/slowsolve.js";
 import { f2lSolved } from "../src/cube.js";
 let bad = 0, n = 0;
@@ -145,6 +145,29 @@ check(tested6 > 10, `uttak testet ${tested6}`);
   const pre = [{ face: "D", amt: 0, grip: yG, grips: [yG] }].filter((m) => m.amt);
   const r = judgePair({ start: st, moves: mv, slot: nw[0], startGrip: yG }); // segmentet startet i y-grep
   check(r.verdict !== "feil" || r.held === heldSlot(nw[0], START_GRIP), `grep ved start avgjør sporet: ${JSON.stringify(r)}`);
+}
+
+// 6d) FR-løsningen flyttet til andre spor (uten egen sporløsning) → ok uten alarm-plikt; annen løsning der → ikke-avtalt.
+{
+  const { slotCopies } = await import("../src/slowsolve.js");
+  let cnt = 0;
+  for (const c of CASES) for (const held of ["FL", "BL", "BR"]) {
+    if (variant(c.n, held)) continue; // egen sporløsning finnes – testes andre steder
+    const a = slotCopies(c.n, held)[0];
+    if (!a) continue; // FR-løsningen har rotasjon – ingen kopi
+    const mv = withG(expand(a, START_GRIP).moves);
+    const st = applyMoves(SOLVED, invert(mv));
+    const nw = newly(st, applyMoves(st, mv));
+    const r = judgePair({ start: st, moves: mv, slot: nw[0], startGrip: START_GRIP });
+    cnt++;
+    check(r.verdict === "ok" && r.n === c.n && r.held === held && r.copy, `kopi ${c.n} ${held} ${a}: ${JSON.stringify(r)}`);
+  }
+  check(cnt > 40, `kopier testet ${cnt}`);
+  // 1 i BL med L U' L' (etter AUF) er riktig
+  const one = withG(expand("U L U' L'", START_GRIP).moves);
+  const st1 = applyMoves(SOLVED, invert(one));
+  const r1 = judgePair({ start: st1, moves: one, slot: newly(st1, applyMoves(st1, one))[0], startGrip: START_GRIP });
+  check(r1.verdict === "ok" && r1.n === 1 && r1.held === "BL", `1 i BL: ${JSON.stringify(r1)}`);
 }
 
 // 7) Kryss og scramble.

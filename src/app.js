@@ -875,7 +875,7 @@ function slowCheck(now) {
       W.corr = new Tracker(r.undo.map((m) => ({ face: m.face, amt: m.amt })));
       W.note = null;
       return;
-    } else if (r.verdict === "ok") { W.note = { cls: "ok", text: `✓ F2L ${r.n} · ${r.held}` }; flash(`✓ ${r.n} ${r.held}`); }
+    } else if (r.verdict === "ok") { W.note = { cls: "ok", text: `✓ F2L ${r.n} · ${r.held}${r.copy ? " (FR-løsningen flyttet til sporet)" : ""}` }; flash(`✓ ${r.n} ${r.held}`); }
     else if (r.verdict === "ikke-avtalt") {
       // Ingen avtalt løsning i sporet = fritt, ikke vurdert. Ingen forslag om å rotere til et annet spor.
       W.note = { cls: "muted", text: `F2L ${r.n} i ${r.held || "?"} – ingen avtalt løsning i ${r.held || "det sporet"} ennå, ikke vurdert` };
