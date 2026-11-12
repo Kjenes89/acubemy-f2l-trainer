@@ -161,3 +161,15 @@ button:disabled { opacity: .4; cursor: default; }
 .slot.on { border-color: var(--accent); background: #13233d; }
 .case.na { opacity: .35; }
 .slottab { font: 14px ui-monospace, Consolas, monospace; text-align: left; } .slottab td { border: 0; padding: 2px 8px; }
+
+/* Slow solve */
+.scr { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; font: 22px ui-monospace, Consolas, monospace; max-width: 640px; margin: 6px auto; }
+.scr .mv { font: inherit; }
+.slowbad { color: var(--bad); font-weight: 700; }
+.slowbad.big { font-size: 26px; max-width: none; }
+.mono { font-family: ui-monospace, Consolas, monospace; }
+.pps { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 8px 0; }
+.pp { padding: 3px 8px; border-radius: 6px; border: 1px solid currentColor; font: 14px ui-monospace, Consolas, monospace; }
+.pp.bad { color: var(--bad); }
+.okline { color: var(--good); font-weight: 600; }
+.warnline { color: var(--warn); }

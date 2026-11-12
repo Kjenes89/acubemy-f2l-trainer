@@ -58,9 +58,9 @@ export function sameSolution(executed, algMoves, { strictGrip = true } = {}) {
 }
 
 // Det du gjorde, skrevet slik du holdt kuben (grep fra gyroen ved hvert trekk), med rotasjonene du tok.
-export function didInYourGrip(executed) {
+export function didInYourGrip(executed, start = START_GRIP) {
   const out = [];
-  let grip = START_GRIP;
+  let grip = start;
   for (const m of executed) {
     if (m.grip && !sameGrip(m.grip, grip)) {
       const r = yNeeded(grip, m.grip);

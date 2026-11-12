@@ -4,9 +4,10 @@ import { CASES, CASE_BY_N, DEFAULT_SELECTION, LL_SCRAMBLERS, SLOTS, variant } fr
 import { cubeSvg } from "./view.js";
 import { log, flush, onStatus, LOG_URL } from "./log.js";
 import { Tracker, withPreAuf, sameSolution, didInYourGrip } from "./solve.js";
+import { judgePair, crossSolved, solvedSlots, makeScramble, moveName } from "./slowsolve.js";
 
 let view3d = null;
-const dimNow = () => true;
+const dimNow = () => S.mode !== "slow"; // slow solve viser hele kuben
 
 const $ = (id) => document.getElementById(id);
 const embedded = window.parent !== window;
@@ -34,6 +35,9 @@ const S = {
   recog: { sub: "auf", options: 4, images: false, round: null, results: [], combo: 0, best: 0 },
   predict: { sub: "predict", view: "pair", tps: 3, round: null, results: [], combo: 0, best: 0 },
   review: { idx: 0, inst: null, timer: null },
+  // Slow solve: scramble på den FYSISKE kuben, vanlig løsning, hvert F2L-par vurderes mot avtalt løsning.
+  slow: { end: "f2l", phase: "scramble", no: 0, scramble: [], tracker: null, pairs: [], seg: null, solved: new Set(),
+    f2l: false, corr: null, wrong: null, note: null, last: null, pending: null, lastBefore: null, lag: { pre: 0, post: 0 } },
   hist: {}, // per case fra loggen (Worker /api/stats): medianTotal, attempts, ok
   mixLL: true,
   colorSwap: true,
@@ -154,7 +158,7 @@ function pickCase() {
   return CASE_BY_N[choices[rnd(choices.length)]];
 }
 
-const MODE_NAME = { drill: "Drill", learn: "Learn", recap: "Recap", weighted: "Weighted", rad: "På rad", recog: "Gjenkjenning", predict: "Predict", guided: "Guidet" };
+const MODE_NAME = { drill: "Drill", learn: "Learn", recap: "Recap", weighted: "Weighted", rad: "På rad", recog: "Gjenkjenning", predict: "Predict", guided: "Guidet", slow: "Slow solve" };
 // Bytt treningsmodus (ikke guidet – det er et hjelpemiddel oppå modusen, se toggleGuided).
 function setMode(m, { start = true } = {}) {
   clearInterval(S.review.timer); S.review.timer = null;
@@ -178,6 +182,7 @@ function radAdvance(reason) {
 // Ny case rett på den virtuelle kuben – den fysiske kuben trenger ikke settes opp.
 function startCase(sameAgain = false) {
   hideOverlay();
+  if (S.mode === "slow") { slowStart(); return; }
   if (S.block && (performance.now() >= S.block.end || S.block.roundDone)) { endBlock(); return; }
   if (S.mode === "predict") { if (S.predict.sub === "review") reviewShow(0); else newPredictRound(); return; }
   if (S.mode === "recog") { newRecogRound(); return; }
@@ -564,7 +569,7 @@ function fourInRow(list, face, a, now) {
 }
 
 function toggleGuided() {
-  if (S.mode === "recog" || S.mode === "predict") { flash("Guidet gjelder ikke her"); return; }
+  if (S.mode === "recog" || S.mode === "predict" || S.mode === "slow") { flash("Guidet gjelder ikke her"); return; }
   if (S.mode === "guided") {
     S.mode = S.baseMode; S.repeat = null;
     flash(MODE_NAME[S.mode]);
@@ -610,6 +615,7 @@ function flash(text) {
 // ---------- trekk inn ----------
 function onMove(face, a) {
   const now = performance.now();
+  if (S.mode === "slow") { slowMove(face, a, now); return; }
   if (S.mode === "predict") { if (S.phase === "predict" && face === "D") predictAnswer(a === 1); return; }
   if (S.mode === "recog") {
     const r = S.recog.round;
@@ -649,6 +655,174 @@ function onMove(face, a) {
   else if (cur.execStart != null && cur.startSet.has(S.facelets)) { cur.execStart = null; }
   if (fourInRow(cur.recent, face, a, now) && CASE_SHORTCUT[face]) { shortcut(CASE_SHORTCUT[face]); return; }
   if (f2lSolved(S.facelets)) finishCase(); else render();
+}
+
+
+// ---------- slow solve ----------
+// Den fysiske kuben følges trekk for trekk (egen simulering, kontrollert mot acubemys tilstand).
+// Scramble → kryss (vurderes ikke) → F2L: hvert par som settes inn vurderes mot avtalt løsning.
+// Feil: lyd, rød retting tilbake til før algoritmen, og avtalt løsning. Så prøver du igjen.
+function slowStart() {
+  const W = S.slow;
+  S.cur = null; S.phase = "slow";
+  const f = window.acubemy && acubemy.getFacelets && acubemy.getFacelets();
+  if (f && f.length === 54) S.facelets = f;
+  W.lastBefore = null; W.pending = null;
+  if (view3d) { view3d.colorMap = {}; view3d.set(S.facelets, false); }
+  slowNewScramble();
+  render();
+}
+function slowNewScramble() {
+  const W = S.slow;
+  W.no++;
+  W.scramble = makeScramble();
+  W.tracker = new Tracker(W.scramble.map((m) => ({ ...m })));
+  W.phase = "scramble"; W.pairs = []; W.corr = null; W.wrong = null; W.note = null; W.f2l = false;
+}
+function slowResetSeg(now) {
+  S.slow.seg = { start: S.facelets, moves: [], grip: liveGrip() || S.slow.lastGrip || START_GRIP, t: now };
+}
+function slowMove(face, a, now) {
+  const W = S.slow;
+  W.lastBefore = S.facelets;
+  W.pending = { before: S.facelets, face, a };
+  S.facelets = turn(S.facelets, face, a);
+  if (view3d) view3d.move(face, a, S.facelets, false);
+  const mv = { face, amt: a, grip: liveGrip() || W.lastGrip || START_GRIP, t: now };
+  W.lastGrip = mv.grip;
+  mv.grips = [mv.grip];
+  setTimeout(() => { const g = liveGrip(); if (g) mv.grips.push(g); }, 120);
+  if (W.phase === "scramble") {
+    W.tracker.step(face, a);
+    if (!W.tracker.items.length) {
+      W.phase = "solve"; W.t0 = now; W.solved = solvedSlots(S.facelets); W.f2l = crossSolved(S.facelets);
+      slowResetSeg(now);
+    }
+  } else if (W.phase === "correct") {
+    W.corr.step(face, a);
+    if (!W.corr.items.length) {
+      W.phase = "solve"; W.wrong = null; W.solved = solvedSlots(S.facelets);
+      slowResetSeg(now); flash("Prøv igjen");
+    }
+  } else if (W.phase === "solve") {
+    W.seg.moves.push(mv);
+    // Gul U4 (hvit ned) = kalibrer gyro, som ellers. Fire like U-trekk endrer ikke kuben, så de tas ut av sporingen.
+    W.recent = [...(W.recent || []), { face, a, t: now }].slice(-4);
+    if (fourInRow(W.recent, face, a, now) && face === "D") {
+      if (window.acubemy) acubemy.calibrateGyro();
+      W.seg.moves.splice(-4); W.recent = []; flash("Gyro kalibrert");
+    }
+    slowCheck(now);
+  } else if (W.phase === "ll") {
+    if (S.facelets === SOLVED) slowFinish(now);
+  }
+  render();
+}
+function slowCheck(now) {
+  const W = S.slow, f = S.facelets;
+  if (!crossSolved(f)) return; // midt i en innsetting er krysset brutt – vurder når det står igjen
+  const solvedNow = solvedSlots(f);
+  if (!W.f2l) { W.f2l = true; W.crossMs = now - W.t0; W.solved = solvedNow; slowResetSeg(now); }
+  const fresh = [...solvedNow].filter((sl) => !W.solved.has(sl));
+  W.solved = solvedNow;
+  if (fresh.length > 1) {
+    W.pairs.push({ verdict: "ikke-vurdert", why: "to par samtidig" });
+    W.note = { cls: "muted", text: "To par satt inn samtidig – ikke vurdert" };
+    slowResetSeg(now);
+  } else if (fresh.length === 1) {
+    const seg = W.seg;
+    const r = judgePair({ start: seg.start, moves: seg.moves, slot: fresh[0], startGrip: seg.grip });
+    const from = r.from != null ? seg.moves[r.from] : null;
+    const rec = from ? from.t - seg.t : null, exec = from ? now - from.t : null;
+    W.pairs.push({ ...r, rec, exec });
+    log({ block: S.block ? S.block.id : null, trainer: "f2l", mode: "slowsolve", solve: W.no, case: r.n ?? null, slot: r.held || null,
+      ok: r.verdict === "ok", verdict: r.verdict, rec: rec != null ? Math.round(rec) : null, exec: exec != null ? Math.round(exec) : null,
+      did: r.did, alg: r.alg || (r.hint && r.hint.alg) || null });
+    if (r.verdict === "feil") {
+      beep(2);
+      W.phase = "correct"; W.wrong = r;
+      W.corr = new Tracker(r.undo.map((m) => ({ face: m.face, amt: m.amt })));
+      W.note = null;
+      return;
+    }
+    if (r.verdict === "ok") { W.note = { cls: "ok", text: `✓ F2L ${r.n} · ${r.held}` }; flash(`✓ ${r.n} ${r.held}`); }
+    else if (r.verdict === "ikke-avtalt") {
+      W.note = { cls: "warn", text: `F2L ${r.n} i ${r.held || "?"}: ingen avtalt løsning der${r.hint ? ` – avtalt: ${r.hint.rot ? r.hint.rot + " + " : ""}${r.hint.alg} (${r.hint.held})` : ""}` };
+    } else W.note = { cls: "muted", text: "Paret sto ikke som en av de 41 casene – ikke vurdert" };
+    slowResetSeg(now);
+  }
+  if (solvedNow.size === 4) {
+    if (W.end === "f2l") slowFinish(now);
+    else W.phase = "ll";
+  }
+}
+function slowFinish(now) {
+  const W = S.slow;
+  const cnt = (v) => W.pairs.filter((p) => p.verdict === v).length;
+  W.last = { no: W.no, ok: cnt("ok"), feil: cnt("feil"), na: cnt("ikke-avtalt"), nv: cnt("ikke-vurdert"), ms: now - W.t0, pairs: W.pairs };
+  log({ event: "slowsolve", trainer: "f2l", mode: "slowsolve", solve: W.no, end: W.end, scramble: W.scramble.map(moveName).join(" "),
+    ok: W.last.ok, feil: W.last.feil, ikkeAvtalt: W.last.na, ikkeVurdert: W.last.nv, ms: Math.round(W.last.ms), crossMs: W.crossMs != null ? Math.round(W.crossMs) : null });
+  beep(1);
+  slowNewScramble();
+}
+function slowSkipCorr() {
+  const W = S.slow;
+  if (W.phase !== "correct") return;
+  W.phase = "solve"; W.wrong = null; W.corr = null; W.solved = solvedSlots(S.facelets);
+  slowResetSeg(performance.now());
+  render();
+}
+// acubemy sender tilstanden ved hvert trekk. Den kan ligge ett trekk etter (tilstanden FØR trekket);
+// begge deler godtas. Stemmer ingen av dem, er sporingen ute av takt → bruk acubemys tilstand.
+function slowSync(f) {
+  const W = S.slow, p = W.pending;
+  W.pending = null;
+  if (!f || f.length !== 54 || f === S.facelets) { if (p) W.lag.post++; return; }
+  if (p && f === p.before) { W.lag.pre++; return; }
+  if (!p && f === W.lastBefore) return; // ligger ett trekk etter, uten nytt trekk
+  S.facelets = p && W.lag.pre >= W.lag.post ? turn(f, p.face, p.a) : f;
+  slowSynced("Synket med acubemy");
+}
+function slowSynced(msg) {
+  const W = S.slow;
+  if (view3d) view3d.set(S.facelets, false);
+  if (W.phase === "solve") { W.solved = solvedSlots(S.facelets); W.f2l = crossSolved(S.facelets); slowResetSeg(performance.now()); }
+  flash(msg);
+  render();
+}
+function slowPanel() {
+  const W = S.slow;
+  const pairChip = (p) => {
+    const cls = { ok: "ok", feil: "bad", "ikke-avtalt": "warn" }[p.verdict] || "muted";
+    return `<span class="pp ${cls}" title="${p.verdict}${p.did ? " · du gjorde: " + p.did : ""}">${p.n ?? "?"}${p.held ? " " + p.held : ""}</span>`;
+  };
+  const pairs = W.pairs.length ? `<div class="pps">${W.pairs.map(pairChip).join("")}</div>` : "";
+  const last = W.last ? `<div class="muted small">Forrige løsning: ${W.last.ok} riktige · ${W.last.feil} feil · ${W.last.na} ikke avtalt · ${W.last.nv} ikke vurdert · ${fmt(W.last.ms)} s</div>` : "";
+  if (W.phase === "scramble") {
+    const items = W.tracker.items;
+    const left = items.filter((m) => !m.corr).length;
+    const doneN = W.scramble.length - left;
+    const firstOpen = items.findIndex((m) => !m.corr);
+    return `<div class="hint">Scramble ${W.no} – hold <b>hvit opp, grønn foran</b></div>
+      <div class="scr">${chips(W.scramble.slice(0, Math.max(0, doneN)).map(moveName), "done")}${items.map((m, i) => `<span class="mv ${m.corr ? "bad" : i === firstOpen ? "now" : ""}">${moveName(m)}</span>`).join("")}</div>
+      ${items.some((m) => m.corr) ? `<div class="slowbad small">Rødt = rett opp først</div>` : ""}
+      ${last}${W.last ? `<div class="pps">${W.last.pairs.map(pairChip).join("")}</div>` : ""}`;
+  }
+  if (W.phase === "correct" && W.wrong) {
+    const r = W.wrong, g = liveGrip() || START_GRIP;
+    return `<div class="slowbad big">Feil løsning – F2L ${r.n} i ${r.held}</div>
+      <div>Du gjorde: <span class="mono">${r.did}</span></div>
+      <div class="hint">Tilbake til før algoritmen:</div>
+      <div class="scr">${W.corr.items.map((m) => `<span class="mv bad">${gripNotation(m, g)}</span>`).join("")}</div>
+      <div>Så avtalt løsning (${r.held}): <b class="mono">${r.alg}</b></div>
+      <button id="slow-skipcorr">Hopp over</button>${pairs}`;
+  }
+  const status = W.phase === "ll" ? "F2L ferdig – løs siste lag (vurderes ikke ennå)"
+    : !W.f2l ? "Løs krysset (hvit ned). F2L-parene vurderes når krysset står."
+    : `F2L: ${W.solved.size} av 4 par · hvert par vurderes når det er satt inn`;
+  return `<div class="hint">${status}</div>
+    ${W.note ? `<div class="${W.note.cls === "ok" ? "okline" : W.note.cls === "warn" ? "warnline" : "muted"}">${W.note.text}</div>` : ""}
+    ${pairs}${last}`;
 }
 
 // ---------- visning ----------
@@ -814,6 +988,8 @@ function render() {
     main = S.predict.sub === "review" ? reviewPanel() : predictPanel();
   } else if (S.mode === "recog") {
     main = recogPanel();
+  } else if (S.mode === "slow") {
+    main = `${view3d ? "" : `<div class="cube">${cubeSvg(S.facelets, { dimLastLayer: false })}</div>`}${slowPanel()}`;
   } else {
     const timer = (S.phase === "result" || S.phase === "pause") && S.last ? fmt(S.last.exec) : cur.execStart != null ? fmt(performance.now() - cur.execStart) : "0.00";
     main = `${view3d ? "" : `<div class="cube">${cubeSvg(S.facelets, { colorMap: colorMapFor(cur.colorShift || 0) })}</div>`}
@@ -828,7 +1004,11 @@ function render() {
   $("stage").hidden = still;
   if (view3d) view3d.fixed = S.mode === "predict" || S.mode === "recog";
   $("retry").hidden = $("calib").hidden = S.mode === "recog" || S.mode === "predict";
-  document.querySelector('[data-mode="guided"]').disabled = S.mode === "recog" || S.mode === "predict";
+  if (S.mode === "slow") $("retry").hidden = true;
+  $("skip").textContent = S.mode === "slow" ? "Ny scramble" : "Neste case";
+  $("mixll").parentElement.hidden = $("colorswap").parentElement.hidden = $("toggle-picker").hidden = S.mode === "slow";
+  document.querySelector('[data-mode="guided"]').disabled = S.mode === "recog" || S.mode === "predict" || S.mode === "slow";
+  if ($("slow-skipcorr")) $("slow-skipcorr").onclick = slowSkipCorr;
   if ($("p-yes")) { $("p-yes").onclick = () => predictAnswer(true); $("p-no").onclick = () => predictAnswer(false); }
   if ($("rv-play")) { $("rv-play").onclick = reviewPlay; $("rv-prev").onclick = () => reviewShow(-1); $("rv-next").onclick = () => reviewShow(1); $("rv-rand").onclick = () => reviewShow(0); }
   document.querySelectorAll("[data-auf]").forEach((b) => (b.onclick = () => answerAuf(+b.dataset.auf)));
@@ -844,7 +1024,7 @@ function render() {
   $("sel-count").textContent = `${S.selection.size} valgt`;
   document.querySelectorAll("[data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === S.mode));
   const base = S.mode === "guided" ? S.baseMode : S.mode;
-  for (const m of ["rad", "learn", "recap", "weighted", "recog", "predict"]) $(`${m}-opts`).hidden = base !== m;
+  for (const m of ["rad", "learn", "recap", "weighted", "recog", "predict", "slow"]) $(`${m}-opts`).hidden = base !== m;
   $("recog-name-opts").hidden = S.recog.sub !== "name";
   $("rad-n").value = String(S.rad.n); $("rad-order").value = S.rad.order;
 }
@@ -960,7 +1140,9 @@ function bind() {
   });
   onStatus((st, n) => { $("logstatus").textContent = `Logg: ${st}${n ? ` (${n} venter)` : ""}`; });
   $("calib").addEventListener("click", () => { if (window.acubemy) acubemy.calibrateGyro(); });
-  $("skip").addEventListener("click", () => { shortcut("next"); });
+  $("skip").addEventListener("click", () => { if (S.mode === "slow") { slowNewScramble(); render(); } else shortcut("next"); });
+  num("slow-end", (v) => { S.slow.end = v; });
+  $("slow-sync").addEventListener("click", () => { S.facelets = SOLVED; slowSynced("Satt til løst"); });
   $("retry").addEventListener("click", () => { if (S.cur) startCase(true); });
 }
 
@@ -992,10 +1174,12 @@ async function boot() {
       }
     });
     acubemy.onMove(({ face, prime }) => onMove(face, prime ? 3 : 1));
+    acubemy.onStateChange((f) => { if (S.mode === "slow") slowSync(f); });
   }
   if (!embedded) $("device").textContent = "Utenfor acubemy: tastene U R F D L B (Shift = mot klokka) simulerer kuben i kubens egen ramme";
   window.__sim = (mv) => { const f = mv[0]; const a = mv.includes("2") ? 2 : mv.includes("'") ? 3 : 1; for (let i = 0; i < (a === 2 ? 2 : 1); i++) onMove(f, a === 2 ? 1 : a); };
   window.__state = S;
+  window.__slowSet = (f) => { S.facelets = f; slowSynced("test"); }; // for tester utenfor acubemy
   loadPlan();
   startCase();
   loadHist().then(() => { if (S.phase !== "idle") render(); }); // medianene kommer når loggen er lest

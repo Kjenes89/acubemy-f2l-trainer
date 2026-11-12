@@ -46,11 +46,12 @@ function parseToken(tok) {
 
 /**
  * Utvid en algoritme til sensortrekk. Hvert trekk får `tok` = indeks i token-lista.
+ * `start` = grepet algoritmen starter i (standard: hvit ned, grønn foran).
  * Returnerer { tokens, moves }.
  */
-export function expand(alg) {
+export function expand(alg, start = START) {
   const tokens = tokenize(alg);
-  let map = { ...START };
+  let map = { ...start };
   const moves = [];
   tokens.forEach((tok, ti) => {
     const { base, amt } = parseToken(tok);
