@@ -4,7 +4,7 @@ import { CASES, CASE_BY_N, DEFAULT_SELECTION, LL_SCRAMBLERS, SLOTS, variant } fr
 import { cubeSvg } from "./view.js";
 import { log, flush, onStatus, LOG_URL } from "./log.js";
 import { Tracker, withPreAuf, sameSolution, didInYourGrip } from "./solve.js";
-import { judgePair, crossSolved, solvedSlots, makeScramble, moveName } from "./slowsolve.js";
+import { judgePair, crossSolved, solvedSlots, makeCrossScramble, makeTargetScramble, moveName, heldName, SENSOR_SLOTS } from "./slowsolve.js";
 
 let view3d = null;
 const dimNow = () => S.mode !== "slow"; // slow solve viser hele kuben
@@ -672,12 +672,25 @@ function slowStart() {
   slowNewScramble();
   render();
 }
+// Scramblen bevarer krysset. Står F2L (etter forrige slow solve, eller løst kube), får scramblen alltid
+// én av casene i utvalget (målcasen) i et tilfeldig spor; de andre parene blandes fritt.
 function slowNewScramble() {
   const W = S.slow;
+  W.pairs = []; W.corr = null; W.wrong = null; W.note = null; W.f2l = false;
+  if (!crossSolved(S.facelets)) { W.phase = "needcross"; W.target = null; return; }
   W.no++;
-  W.scramble = makeScramble();
+  const pool = CASES.map((c) => c.n).filter((n) => S.selection.has(n));
+  const choices = pool.length > 1 ? pool.filter((n) => n !== (W.target && W.target.n)) : pool;
+  if (f2lSolved(S.facelets) && choices.length) {
+    const n = choices[rnd(choices.length)], slot = SENSOR_SLOTS[rnd(4)];
+    W.target = { n, slot };
+    W.scramble = makeTargetScramble(n, slot);
+  } else {
+    W.target = null;
+    W.scramble = makeCrossScramble();
+  }
   W.tracker = new Tracker(W.scramble.map((m) => ({ ...m })));
-  W.phase = "scramble"; W.pairs = []; W.corr = null; W.wrong = null; W.note = null; W.f2l = false;
+  W.phase = "scramble";
 }
 function slowResetSeg(now) {
   S.slow.seg = { start: S.facelets, moves: [], grip: liveGrip() || S.slow.lastGrip || START_GRIP, t: now };
@@ -713,6 +726,8 @@ function slowMove(face, a, now) {
       W.seg.moves.splice(-4); W.recent = []; flash("Gyro kalibrert");
     }
     slowCheck(now);
+  } else if (W.phase === "needcross") {
+    if (crossSolved(S.facelets)) slowNewScramble();
   } else if (W.phase === "ll") {
     if (S.facelets === SOLVED) slowFinish(now);
   }
@@ -738,14 +753,18 @@ function slowCheck(now) {
     log({ block: S.block ? S.block.id : null, trainer: "f2l", mode: "slowsolve", solve: W.no, case: r.n ?? null, slot: r.held || null,
       ok: r.verdict === "ok", verdict: r.verdict, rec: rec != null ? Math.round(rec) : null, exec: exec != null ? Math.round(exec) : null,
       did: r.did, alg: r.alg || (r.hint && r.hint.alg) || null });
-    if (r.verdict === "feil") {
+    // Alarm bare for caser i utvalget (det vi trener nå). Andre caser logges, men gir ingen alarm.
+    const inSel = r.n != null && S.selection.has(r.n);
+    if (r.verdict === "feil" && !inSel) {
+      W.pairs[W.pairs.length - 1].verdict = "utenfor";
+      W.note = { cls: "muted", text: `F2L ${r.n} (${r.held}) – ikke i utvalget, ingen alarm. Avtalt: ${r.alg}` };
+    } else if (r.verdict === "feil") {
       beep(2);
       W.phase = "correct"; W.wrong = r;
       W.corr = new Tracker(r.undo.map((m) => ({ face: m.face, amt: m.amt })));
       W.note = null;
       return;
-    }
-    if (r.verdict === "ok") { W.note = { cls: "ok", text: `✓ F2L ${r.n} · ${r.held}` }; flash(`✓ ${r.n} ${r.held}`); }
+    } else if (r.verdict === "ok") { W.note = { cls: "ok", text: `✓ F2L ${r.n} · ${r.held}` }; flash(`✓ ${r.n} ${r.held}`); }
     else if (r.verdict === "ikke-avtalt") {
       W.note = { cls: "warn", text: `F2L ${r.n} i ${r.held || "?"}: ingen avtalt løsning der${r.hint ? ` – avtalt: ${r.hint.rot ? r.hint.rot + " + " : ""}${r.hint.alg} (${r.hint.held})` : ""}` };
     } else W.note = { cls: "muted", text: "Paret sto ikke som en av de 41 casene – ikke vurdert" };
@@ -759,8 +778,8 @@ function slowCheck(now) {
 function slowFinish(now) {
   const W = S.slow;
   const cnt = (v) => W.pairs.filter((p) => p.verdict === v).length;
-  W.last = { no: W.no, ok: cnt("ok"), feil: cnt("feil"), na: cnt("ikke-avtalt"), nv: cnt("ikke-vurdert"), ms: now - W.t0, pairs: W.pairs };
-  log({ event: "slowsolve", trainer: "f2l", mode: "slowsolve", solve: W.no, end: W.end, scramble: W.scramble.map(moveName).join(" "),
+  W.last = { no: W.no, ok: cnt("ok"), feil: cnt("feil"), na: cnt("ikke-avtalt") + cnt("utenfor"), nv: cnt("ikke-vurdert"), ms: now - W.t0, pairs: W.pairs, target: W.target };
+  log({ event: "slowsolve", trainer: "f2l", mode: "slowsolve", solve: W.no, end: W.end, scramble: W.scramble.map(heldName).join(" "), target: W.target ? W.target.n : null,
     ok: W.last.ok, feil: W.last.feil, ikkeAvtalt: W.last.na, ikkeVurdert: W.last.nv, ms: Math.round(W.last.ms), crossMs: W.crossMs != null ? Math.round(W.crossMs) : null });
   beep(1);
   slowNewScramble();
@@ -797,14 +816,14 @@ function slowPanel() {
     return `<span class="pp ${cls}" title="${p.verdict}${p.did ? " · du gjorde: " + p.did : ""}">${p.n ?? "?"}${p.held ? " " + p.held : ""}</span>`;
   };
   const pairs = W.pairs.length ? `<div class="pps">${W.pairs.map(pairChip).join("")}</div>` : "";
-  const last = W.last ? `<div class="muted small">Forrige løsning: ${W.last.ok} riktige · ${W.last.feil} feil · ${W.last.na} ikke avtalt · ${W.last.nv} ikke vurdert · ${fmt(W.last.ms)} s</div>` : "";
+  const last = W.last ? `<div class="muted small">Forrige: ${W.last.target ? `målcase ${W.last.target.n} · ` : ""}${W.last.ok} riktige · ${W.last.feil} feil · ${W.last.na} uten alarm · ${W.last.nv} ikke vurdert · ${fmt(W.last.ms)} s</div>` : "";
   if (W.phase === "scramble") {
     const items = W.tracker.items;
     const left = items.filter((m) => !m.corr).length;
     const doneN = W.scramble.length - left;
     const firstOpen = items.findIndex((m) => !m.corr);
-    return `<div class="hint">Scramble ${W.no} – hold <b>hvit opp, grønn foran</b></div>
-      <div class="scr">${chips(W.scramble.slice(0, Math.max(0, doneN)).map(moveName), "done")}${items.map((m, i) => `<span class="mv ${m.corr ? "bad" : i === firstOpen ? "now" : ""}">${moveName(m)}</span>`).join("")}</div>
+    return `<div class="hint">Scramble ${W.no} – hold <b>hvit ned, grønn foran</b> · krysset står${W.target ? " · én av casene i utvalget er med" : ""}</div>
+      <div class="scr">${chips(W.scramble.slice(0, Math.max(0, doneN)).map(heldName), "done")}${items.map((m, i) => `<span class="mv ${m.corr ? "bad" : i === firstOpen ? "now" : ""}">${heldName(m)}</span>`).join("")}</div>
       ${items.some((m) => m.corr) ? `<div class="slowbad small">Rødt = rett opp først</div>` : ""}
       ${last}${W.last ? `<div class="pps">${W.last.pairs.map(pairChip).join("")}</div>` : ""}`;
   }
@@ -817,6 +836,7 @@ function slowPanel() {
       <div>Så avtalt løsning (${r.held}): <b class="mono">${r.alg}</b></div>
       <button id="slow-skipcorr">Hopp over</button>${pairs}`;
   }
+  if (W.phase === "needcross") return `<div class="hint">Løs krysset (eller hele kuben) – så kommer scramblen. Den bevarer krysset.</div>${last}`;
   const status = W.phase === "ll" ? "F2L ferdig – løs siste lag (vurderes ikke ennå)"
     : !W.f2l ? "Løs krysset (hvit ned). F2L-parene vurderes når krysset står."
     : `F2L: ${W.solved.size} av 4 par · hvert par vurderes når det er satt inn`;
@@ -1006,7 +1026,7 @@ function render() {
   $("retry").hidden = $("calib").hidden = S.mode === "recog" || S.mode === "predict";
   if (S.mode === "slow") $("retry").hidden = true;
   $("skip").textContent = S.mode === "slow" ? "Ny scramble" : "Neste case";
-  $("mixll").parentElement.hidden = $("colorswap").parentElement.hidden = $("toggle-picker").hidden = S.mode === "slow";
+  $("mixll").parentElement.hidden = $("colorswap").parentElement.hidden = S.mode === "slow";
   document.querySelector('[data-mode="guided"]').disabled = S.mode === "recog" || S.mode === "predict" || S.mode === "slow";
   if ($("slow-skipcorr")) $("slow-skipcorr").onclick = slowSkipCorr;
   if ($("p-yes")) { $("p-yes").onclick = () => predictAnswer(true); $("p-no").onclick = () => predictAnswer(false); }

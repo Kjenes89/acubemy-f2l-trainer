@@ -2,7 +2,8 @@
 import { SOLVED, turn, applyMoves } from "../src/cube.js";
 import { expand, invert, START_GRIP, rotateGrip } from "../src/alg.js";
 import { CASES, SLOT_ALGS, CASE_BY_N } from "../src/cases.js";
-import { judgePair, CASE_TABLE, caseOf, solvedSlots, crossSolved, makeScramble, heldSlot, SENSOR_SLOTS } from "../src/slowsolve.js";
+import { judgePair, CASE_TABLE, caseOf, solvedSlots, crossSolved, makeCrossScramble, makeTargetScramble, heldSlot, SENSOR_SLOTS } from "../src/slowsolve.js";
+import { f2lSolved } from "../src/cube.js";
 let bad = 0, n = 0;
 const check = (cond, msg) => { n++; if (!cond) { bad++; console.log("FEIL", msg); } };
 const withG = (ms) => ms.map((m) => ({ ...m, grips: [m.grip] }));
@@ -88,9 +89,18 @@ check(tested6 > 10, `uttak testet ${tested6}`);
 
 // 7) Kryss og scramble.
 check(crossSolved(SOLVED) && !crossSolved(turn(SOLVED, "F", 1)) && crossSolved(turn(SOLVED, "D", 1)), "kryss");
-for (let i = 0; i < 200; i++) {
-  const s = makeScramble();
-  check(s.length === 25 && s.every((m, k) => k === 0 || m.face !== s[k - 1].face), "scramble");
+// Scramblene: krysset står alltid; målscramblen gir riktig case i riktig spor, også fra F2L-løst med uløst siste lag.
+const llMixed = applyMoves(SOLVED, expand("R U R' U R U2 R' F R U R' U' F'").moves);
+for (let i = 0; i < 300; i++) {
+  const g = makeCrossScramble();
+  check(crossSolved(applyMoves(llMixed, g)), "kryss-scramble bryter krysset");
+  const c = CASES[i % 41], sl = SENSOR_SLOTS[i % 4];
+  const from = i % 2 ? SOLVED : llMixed;
+  check(f2lSolved(from), "start");
+  const t = makeTargetScramble(c.n, sl);
+  const st = applyMoves(from, t);
+  check(crossSolved(st) && caseOf(st, sl) === c.n, `målscramble ${c.n} ${sl}: case ${caseOf(st, sl)}`);
+  check(t.length < 45, `lengde ${t.length}`);
 }
 console.log(bad ? `${bad} av ${n} feil` : `slowsolve: ${n} kontroller ok`);
 process.exit(bad ? 1 : 0);

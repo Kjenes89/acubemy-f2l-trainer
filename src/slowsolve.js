@@ -3,7 +3,7 @@
 // Alt regnes i kubens sensorramme (hvit = U, grønn = F, rød = R). Krysset er hvitt (sensor U),
 // og Vegard løser med hvit ned, så «U» i grepet er sensor D.
 import { SOLVED, STICKERS, OPPOSITE, turn, applyMoves } from "./cube.js";
-import { expand, invert, simplify, START_GRIP, rotateGrip, yNeeded } from "./alg.js";
+import { expand, invert, simplify, START_GRIP, rotateGrip, yNeeded, SENSOR_TO_HELD } from "./alg.js";
 import { CASES, variant } from "./cases.js";
 import { sameSolution, didInYourGrip } from "./solve.js";
 
@@ -61,20 +61,52 @@ export function heldSlot(slot, grip) {
   return fb && rl ? fb + rl : null;
 }
 
-// ---------- scramble ----------
-/** Tilfeldig trekk-scramble (25 trekk, ingen like/motstående flater som kan slås sammen). Sensorramme = WCA-orientering. */
-export function makeScramble(len = 25, rand = Math.random) {
+// ---------- scramble (krysset står) ----------
+// Bare «innsettinger» X U^m X' (X = en sideflate, U = gul = sensor D) og U-trekk: krysset røres aldri,
+// så scramblen virker fra enhver tilstand der krysset står. Scramblen vises slik du holder kuben (hvit ned).
+const SIDES = ["F", "R", "B", "L"];
+const pick = (xs, rand) => xs[Math.floor(rand() * xs.length)];
+function triggers(faces, count, rand) {
   const out = [];
-  while (out.length < len) {
-    const face = "URFDLB"[Math.floor(rand() * 6)];
-    const a = out[out.length - 1], b = out[out.length - 2];
-    if (a && a.face === face) continue;
-    if (a && b && OPPOSITE[a.face] === face && b.face === face) continue;
-    out.push({ face, amt: 1 + Math.floor(rand() * 3) });
+  for (let i = 0; i < count; i++) {
+    const x = pick(faces, rand), d = rand() < 0.5 ? 1 : 3, m = 1 + Math.floor(rand() * 3);
+    out.push({ face: "D", amt: Math.floor(rand() * 4) }, { face: x, amt: d }, { face: "D", amt: m }, { face: x, amt: 4 - d });
   }
   return out;
 }
+
+/** Scramble med løst kryss, uten bestemt case (når F2L ikke står fra før). */
+export function makeCrossScramble(rand = Math.random) {
+  return simplify(triggers(SIDES, 8, rand));
+}
+
+/**
+ * Scramble som gir en bestemt case (n) i et bestemt spor, med de tre andre parene og siste lag blandet.
+ * Krever at F2L står når scramblen starter (det gjør den etter forrige slow solve med «til og med F2L»).
+ * Sporet er et av de fire sensorsporene; de andre parene blandes bare med de to sideflatene som ikke rører
+ * målsporet, og til slutt settes casen opp med invers av bokas FR-algoritme (etter y-rotasjon til sporet).
+ */
+export function makeTargetScramble(n, slot, rand = Math.random) {
+  const c = CASES.find((x) => x.n === n);
+  const free = SIDES.filter((f) => f !== slot[0] && f !== slot[1]);
+  for (const rot of ["", "y ", "y2 ", "y' "]) {
+    const setup = invert(expand(rot + c.book).moves);
+    const st = applyMoves(SOLVED, setup);
+    if (SENSOR_SLOTS.filter((sl) => !slotSolved(st, sl)).join() !== slot) continue;
+    // Noen innsettinger etter oppsettet også, så casen ikke kan leses av slutten på scramblen.
+    // De kan dra en målbrikke ut av U-laget; da trekkes det på nytt.
+    for (let i = 0; i < 300; i++) {
+      const seq = simplify([...triggers(free, 4, rand), ...setup, ...triggers(free, 3, rand), { face: "D", amt: Math.floor(rand() * 4) }]);
+      if (caseOf(applyMoves(SOLVED, seq), slot) === n) return seq;
+    }
+    return simplify([...triggers(free, 6, rand), ...setup, { face: "D", amt: Math.floor(rand() * 4) }]);
+  }
+  throw new Error("fant ikke sporet " + slot);
+}
+
 export const moveName = (m) => m.face + (m.amt === 2 ? "2" : m.amt === 3 ? "'" : "");
+/** Trekket slik du holder kuben (hvit ned, grønn foran). */
+export const heldName = (m) => moveName({ face: SENSOR_TO_HELD[m.face], amt: m.amt });
 
 // ---------- vurdering av ett par ----------
 const strictGrip = (a) => !/[rludfbMES]|w/.test(a);

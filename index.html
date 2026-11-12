@@ -49,7 +49,8 @@
   </span>
   <span id="slow-opts" class="chk" hidden>Til og med
     <select id="slow-end"><option value="f2l" selected>F2L</option><option value="all">løst kube</option></select> ·
-    <button id="slow-sync" title="Trykk hvis skjermen viser feil tilstand og kuben din er løst">Kuben er løst</button></span>
+    <button id="slow-sync" title="Trykk hvis skjermen viser feil tilstand og kuben din er løst">Kuben er løst</button> ·
+    <span class="muted small" title="Casene valgt under «Caser»: én av dem er med i hver scramble, og bare de gir alarm">alarm og målcase = utvalget i «Caser»</span></span>
   <label class="chk"><input type="checkbox" id="mixll" checked> Bland siste lag</label>
   <label class="chk" title="Casen vises med tilfeldig sidefarge foran (grønn, oransje, blå eller rød). Hold fortsatt grønn foran og se på skjermen."><input type="checkbox" id="colorswap" checked> Bytt farger</label>
   <button id="toggle-algs">Algoritmer</button>
@@ -89,7 +90,7 @@
   </aside>
 </main>
 
-<footer class="muted small"><span id="logstatus"></span><br>Snarveier (fire like trekk) under casen: gul U4 = kalibrer gyro · hvit D4 = samme case igjen · oransje R4 = guidet av/på · rød L4 = neste case. I resultatvinduet: U = videre · rød L4 = gjenta · oransje R4 = guidet<br>M2.8 · Slow solve: scramble på den fysiske kuben, løs vanlig – hvert F2L-par vurderes mot avtalt løsning (gul U4 = kalibrer gyro) · øvrige moduser: casen lages på skjermen og trekkene dine brukes på den – den fysiske kuben trenger ikke stå i noen bestemt tilstand · hold grønn foran og hvit ned, og se på skjermen · algoritmene vises som i boka, og rotasjonene må gjøres (kontrolleres med gyroen)</footer>
+<footer class="muted small"><span id="logstatus"></span><br>Snarveier (fire like trekk) under casen: gul U4 = kalibrer gyro · hvit D4 = samme case igjen · oransje R4 = guidet av/på · rød L4 = neste case. I resultatvinduet: U = videre · rød L4 = gjenta · oransje R4 = guidet<br>M2.9 · Slow solve: scramble med løst kryss på den fysiske kuben (hvit ned), løs F2L – hvert F2L-par vurderes mot avtalt løsning (gul U4 = kalibrer gyro) · øvrige moduser: casen lages på skjermen og trekkene dine brukes på den – den fysiske kuben trenger ikke stå i noen bestemt tilstand · hold grønn foran og hvit ned, og se på skjermen · algoritmene vises som i boka, og rotasjonene må gjøres (kontrolleres med gyroen)</footer>
 
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }</script>
 <script src="https://cdn.jsdelivr.net/gh/acubemy/plugin-sdk@1/v1.js"></script>
